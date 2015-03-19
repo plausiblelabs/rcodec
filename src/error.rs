@@ -6,6 +6,10 @@
 // Scala scodec library: https://github.com/scodec/scodec/
 //
 
-pub mod error;
-pub mod byte_vector;
-pub mod codec;
+/// Error type for codec operations.
+// TODO: Perhaps we should have separate error types for codec and byte_vector
+#[derive(Debug)]
+pub struct Error {
+    /// The error message.
+    pub description: String
+}

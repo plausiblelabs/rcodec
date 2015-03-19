@@ -10,6 +10,8 @@ use std;
 use std::rc::Rc;
 use std::vec::Vec;
 
+use error::Error;
+
 /// An immutable vector of bytes.
 #[derive(Debug)]
 pub struct ByteVector {
@@ -23,17 +25,18 @@ impl ByteVector {
         self.storage.length()
     }
 
-    /// Read up to a maximum of length bytes at offset from this byte vector into the given buffer.
+    /// Read up to a maximum of `len` bytes at `offset` from this byte vector into the given buffer.
     pub fn read(&self, buf: &mut [u8], offset: usize, len: usize) -> Result<usize, Error> {
         self.storage.read(buf, offset, len)
     }
-}
 
-/// Error type for byte vector operations.
-#[derive(Debug)]
-pub struct Error {
-    /// The error message.
-    pub description: String
+    /// Return a new byte vector containing all but the first `len` bytes of this byte vector,
+    /// or an error if dropping `len` bytes would overrun the end of this byte vector.
+    pub fn drop(&self, len: usize) -> Result<ByteVector, Error> {
+        self.storage.view(len, self.length() - len).map(|remainder| {
+            ByteVector { storage: Rc::new(remainder) }
+        })
+    }
 }
 
 impl PartialEq for ByteVector {
@@ -61,7 +64,8 @@ impl PartialEq for ByteVector {
 enum StorageType {
     Empty,
     Heap { bytes: Vec<u8> },
-    Append { lhs: Rc<StorageType>, rhs: Rc<StorageType>, len: usize }
+    Append { lhs: Rc<StorageType>, rhs: Rc<StorageType>, len: usize },
+    View { storage: Rc<StorageType>, offset: usize, len: usize }
 }
 
 impl StorageType {
@@ -70,7 +74,8 @@ impl StorageType {
         match *self {
             StorageType::Empty => 0,
             StorageType::Heap { ref bytes } => bytes.len(),
-            StorageType::Append { ref len, .. } => *len
+            StorageType::Append { ref len, .. } => *len,
+            StorageType::View { ref len, .. } => *len
         }
     }
 
@@ -122,6 +127,9 @@ impl StorageType {
                     },
                     Err(e) => Err(e)
                 }
+            },
+            StorageType::View { ref storage, .. } => {
+                Err(Error { description: "Not yet implemented".to_string() })
             }
         }
     }
@@ -140,6 +148,11 @@ impl StorageType {
 
         // Otherwise, return the read value
         v[0]
+    }
+
+    /// Return a projection at `offset` with `len` bytes within this byte vector.
+    fn view(&self, offset: usize, len: usize) -> Result<StorageType, Error> {
+        Err(Error { description: "Not yet implemented".to_string() })
     }
 }
 
