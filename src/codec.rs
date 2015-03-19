@@ -6,5 +6,3 @@
 // Scala scodec library: https://github.com/scodec/scodec/
 //
 
-pub mod byte_vector;
-pub mod codec;
