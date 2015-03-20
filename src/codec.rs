@@ -9,6 +9,7 @@
 use error::Error;
 use byte_vector;
 use byte_vector::ByteVector;
+use hlist::*;
 
 /// Implements encoding and decoding of values of type `T`.
 #[allow(dead_code)]
@@ -51,7 +52,7 @@ trait Decoder<T> {
     fn decode(&self, bv: &ByteVector) -> DecodeResult<T>;
 }
 
-/// TODO
+/// XXX: Rough sketch of an integral codec, currently only defined for u8 type
 struct IntegralEncoder;
 impl Encoder<u8> for IntegralEncoder {
     fn encode(&self, value: &u8) -> EncodeResult {
@@ -85,14 +86,38 @@ pub fn uint8() -> Codec<u8> {
     }
 }
 
+/// XXX: Rough sketch of an HList codec
+struct HListEncoder;
+impl<H, T> Encoder<Box<HCons<H, T>>> for HListEncoder {
+    fn encode(&self, value: &Box<HCons<H, T>>) -> EncodeResult {
+        Err(Error { description: "Not yet implemented".to_string() })
+    }
+}
+
+struct HListDecoder;
+impl<H, T> Decoder<Box<HCons<H, T>>> for HListDecoder {
+    fn decode(&self, bv: &ByteVector) -> DecodeResult<Box<HCons<H, T>>> {
+        Err(Error { description: "Not yet implemented".to_string() })
+    }
+}
+
+pub fn hlist_codec<H, T>(codecs: &HCons<H, T>) -> Codec<Box<HCons<H, T>>> {
+    Codec {
+        encoder: Box::new(HListEncoder),
+        decoder: Box::new(HListDecoder)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fmt::Debug;
     use error::Error;
     use byte_vector;
     use byte_vector::ByteVector;
+    use hlist::HList;
 
-    fn assert_round_trip_bytes(codec: Codec<u8>, value: &u8, raw_bytes: Option<ByteVector>) {
+    fn assert_round_trip_bytes<T: Eq + Debug>(codec: Codec<T>, value: &T, raw_bytes: Option<ByteVector>) {
         // Encode
         let result = codec.encode(value).and_then(|encoded| {
             // Compare encoded bytes to the expected bytes, if provided
@@ -120,9 +145,15 @@ mod tests {
             Err(e) => panic!("Round-trip encoding failed: {:?}", e),
         }
     }
-    
+
     #[test]
     fn a_u8_value_should_round_trip() {
         assert_round_trip_bytes(uint8(), &7u8, Some(byte_vector::buffered(&vec!(7u8))));
     }
+
+    // #[test]
+    // fn an_hlist_codec_should_round_trip() {
+    //     let codec = hlist_codec(&hlist!(uint8(), uint8()));
+    //     assert_round_trip_bytes(codec, &Box::new(hlist!(7u8, 3u8)), Some(byte_vector::buffered(&vec!(7u8, 3u8))));
+    // }
 }

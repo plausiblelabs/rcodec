@@ -9,6 +9,11 @@
 // The following suppresses warnings related to use of unstable std::slice::bytes::copy_memory() function.
 #![feature(core)]
 
+// The following is necessary to make exported macros visible.
+#[macro_use]
+pub mod macros;
+
 pub mod error;
+pub mod hlist;
 pub mod byte_vector;
 pub mod codec;
