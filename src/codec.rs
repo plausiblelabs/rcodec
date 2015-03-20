@@ -11,11 +11,13 @@ use byte_vector;
 use byte_vector::ByteVector;
 
 /// Implements encoding and decoding of values of type `T`.
+#[allow(dead_code)]
 pub struct Codec<T> {
     encoder: Box<Encoder<T>>,
     decoder: Box<Decoder<T>>
 }
 
+#[allow(dead_code)]
 impl<T> Codec<T> {
     fn encode(&self, value: &T) -> EncodeResult {
         self.encoder.encode(value)
@@ -89,13 +91,13 @@ mod tests {
     use byte_vector;
     use byte_vector::ByteVector;
 
-    fn assert_round_trip_bytes(codec: Codec<u8>, value: &u8, rawBytes: Option<ByteVector>) {
+    fn assert_round_trip_bytes(codec: Codec<u8>, value: &u8, raw_bytes: Option<ByteVector>) {
         // Encode
         let result = codec.encode(value).and_then(|encoded| {
             // Compare encoded bytes to the expected bytes, if provided
-            let compare_result = match rawBytes {
+            let compare_result = match raw_bytes {
                 Some(ref expected) => {
-                    if (encoded != *expected) {
+                    if encoded != *expected {
                         Err(Error { description: "Encoded bytes do not match expected bytes".to_string() })
                     } else {
                         Ok(())

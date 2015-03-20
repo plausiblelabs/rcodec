@@ -33,9 +33,50 @@ impl ByteVector {
     /// Return a new byte vector containing all but the first `len` bytes of this byte vector,
     /// or an error if dropping `len` bytes would overrun the end of this byte vector.
     pub fn drop(&self, len: usize) -> Result<ByteVector, Error> {
-        self.storage.view(len, self.length() - len).map(|remainder| {
+        let storage_len = self.length();
+        if (len > storage_len) {
+            return Err(Error { description: format!("Requested length of {len} bytes exceeds vector length of {vlen}", len = len, vlen = storage_len) });
+        }
+        
+        self.view(len, storage_len - len).map(|remainder| {
             ByteVector { storage: Rc::new(remainder) }
         })
+    }
+
+    /// Return a projection at `offset` with `len` bytes within this byte vector's storage.
+    fn view(&self, offset: usize, len: usize) -> Result<StorageType, Error> {
+        // Verify that offset is within our storage bounds
+        let storage_len = self.length();
+        if offset > storage_len {
+            return Err(Error { description: format!("Requested view offset of {off} bytes exceeds vector length of {vlen}", off = offset, vlen = storage_len) });
+        }
+
+        // Verify that offset + len will not overflow
+        if std::usize::MAX - offset < len {
+            return Err(Error { description: format!("Requested view offset of {off} and length {len} bytes would overflow maximum value of usize", off = offset, len = len) });
+        }
+        
+        // Verify that offset + len is within our storage bounds
+        if offset + len > storage_len {
+            return Err(Error { description: format!("Requested view offset of {off} and length {len} bytes exceeds vector length of {vlen}", off = offset, len = len, vlen = storage_len) });
+        }
+
+        match *self.storage {
+            StorageType::Empty => {
+                Err(Error { description: "Cannot create view for empty vector".to_string() })
+            },
+            StorageType::Heap { .. } => {
+                // Create a new view around this heap storage
+                Ok(StorageType::View { storage: self.storage.clone(), voffset: offset, vlen: len })
+            },
+            StorageType::Append { ref lhs, ref rhs, .. } => {
+                Err(Error { description: "Not yet implemented".to_string() })
+            },
+            StorageType::View { ref storage, ref voffset, ref vlen } => {
+                // Create a new view around this view's underlying storage
+                Ok(StorageType::View { storage: storage.clone(), voffset: voffset + offset, vlen: len })
+            }
+        }
     }
 }
 
@@ -65,7 +106,9 @@ enum StorageType {
     Empty,
     Heap { bytes: Vec<u8> },
     Append { lhs: Rc<StorageType>, rhs: Rc<StorageType>, len: usize },
-    View { storage: Rc<StorageType>, offset: usize, len: usize }
+    // TODO: Note the 'v' prefix; I couldn't find a way to rename the variables while destructuring
+    // in a match, so this was the only way to avoid colliding with the offset/len function parameters
+    View { storage: Rc<StorageType>, voffset: usize, vlen: usize }
 }
 
 impl StorageType {
@@ -75,20 +118,31 @@ impl StorageType {
             StorageType::Empty => 0,
             StorageType::Heap { ref bytes } => bytes.len(),
             StorageType::Append { ref len, .. } => *len,
-            StorageType::View { ref len, .. } => *len
+            StorageType::View { ref vlen, .. } => *vlen
         }
     }
 
     /// Read up to a maximum of length bytes at offset from this byte vector into the given buffer.
     fn read(&self, buf: &mut [u8], offset: usize, len: usize) -> Result<usize, Error> {
-        // Verify that range is within our storage bounds
-        if offset + len > self.length() {
-            return Err(Error { description: format!("Requested read offset of {off} bytes and length {len} exceeds vector length of {vlen}", off = offset, len = len, vlen = self.length()) });
+        // Verify that offset is within our storage bounds
+        let storage_len = self.length();
+        if offset > storage_len {
+            return Err(Error { description: format!("Requested read offset of {off} bytes exceeds vector length of {vlen}", off = offset, vlen = storage_len) });
         }
 
+        // Verify that offset + len will not overflow
+        if std::usize::MAX - offset < len {
+            return Err(Error { description: format!("Requested read offset of {off} and length {len} bytes would overflow maximum value of usize", off = offset, len = len) });
+        }
+        
+        // Verify that offset + len is within our storage bounds
+        if offset + len > storage_len {
+            return Err(Error { description: format!("Requested read offset of {off} and length {len} bytes exceeds vector length of {vlen}", off = offset, len = len, vlen = storage_len) });
+        }
+        
         match *self {
             StorageType::Empty => {
-                Ok(0)
+                Err(Error { description: "Cannot read from empty vector".to_string() })
             },
             StorageType::Heap { ref bytes } => {
                 let count = std::cmp::min(len, bytes.len() - offset);
@@ -128,8 +182,10 @@ impl StorageType {
                     Err(e) => Err(e)
                 }
             },
-            StorageType::View { ref storage, .. } => {
-                Err(Error { description: "Not yet implemented".to_string() })
+            StorageType::View { ref storage, ref voffset, ref vlen } => {
+                // Let the backing storage perform the read
+                let count = std::cmp::min(*vlen, len);
+                storage.read(buf, *voffset + offset, count)
             }
         }
     }
@@ -148,11 +204,6 @@ impl StorageType {
 
         // Otherwise, return the read value
         v[0]
-    }
-
-    /// Return a projection at `offset` with `len` bytes within this byte vector.
-    fn view(&self, offset: usize, len: usize) -> Result<StorageType, Error> {
-        Err(Error { description: "Not yet implemented".to_string() })
     }
 }
 
@@ -213,6 +264,8 @@ mod tests {
         assert!(bv.read(buf, 0, 2).is_ok());
         assert!(bv.read(buf, 2, 2).is_ok());
         assert!(bv.read(buf, 4, 1).is_err());
+
+        // TODO: Also test overflow case
     }
 
     #[test]
@@ -260,4 +313,54 @@ mod tests {
             assert_eq!(buf, [4, 1]);
         }
     }
+
+    #[test]
+    fn drop_should_fail_if_length_is_invalid() {
+        let bytes = vec![1, 2, 3, 4];
+        let bv = buffered(&bytes);
+
+        assert!(bv.drop(2).is_ok());
+        assert!(bv.drop(4).is_ok());
+        assert!(bv.drop(5).is_err());
+    }
+
+    #[test]
+    fn drop_should_work_for_buffered_vector() {
+        let bytes = vec![1, 2, 3, 4];
+        let bv = buffered(&bytes);
+
+        let result = bv.drop(2);
+        assert!(result.is_ok());
+        println!("{:?}", result);
+        assert_eq!(result.unwrap(), buffered(&vec![3, 4]));
+    }
+
+    // #[test]
+    // fn drop_should_work_for_append_vector() {
+    //     let bytes = vec![1, 2, 3, 4];
+    //     let lhs = buffered(&bytes);
+    //     let rhs = buffered(&bytes);
+    //     let bv = append(&lhs, &rhs);
+
+    //     // Verify case where drop takes from lhs only
+    //     {
+    //         let result = bv.drop(2);
+    //         assert!(result.is_ok());
+    //         assert_eq!(result.unwrap(), buffered(&vec![1, 2]));
+    //     }
+
+    //     // Verify case where drop takes from rhs only
+    //     {
+    //         let result = bv.drop(2);
+    //         assert!(result.is_ok());
+    //         assert_eq!(result.unwrap(), buffered(&vec![2, 3]));
+    //     }
+
+    //     // Verify case where read takes from both lhs and rhs
+    //     {
+    //         let result = bv.drop(2);
+    //         assert!(result.is_ok());
+    //         assert_eq!(result.unwrap(), buffered(&vec![4, 1]));
+    //     }
+    // }
 }
