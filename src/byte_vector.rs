@@ -7,13 +7,13 @@
 //
 
 use std;
+use std::fmt::{Debug, Formatter};
 use std::rc::Rc;
 use std::vec::Vec;
 
 use error::Error;
 
 /// An immutable vector of bytes.
-#[derive(Debug)]
 pub struct ByteVector {
     /// The underlying storage type.
     storage: Rc<StorageType>
@@ -34,47 +34,72 @@ impl ByteVector {
     /// or an error if dropping `len` bytes would overrun the end of this byte vector.
     pub fn drop(&self, len: usize) -> Result<ByteVector, Error> {
         let storage_len = self.length();
-        if (len > storage_len) {
+        if len > storage_len {
             return Err(Error { description: format!("Requested length of {len} bytes exceeds vector length of {vlen}", len = len, vlen = storage_len) });
         }
         
-        self.view(len, storage_len - len).map(|remainder| {
-            ByteVector { storage: Rc::new(remainder) }
+        ByteVector::view(&self.storage, len, storage_len - len).map(|remainder| {
+            ByteVector { storage: remainder }
         })
     }
 
-    /// Return a projection at `offset` with `len` bytes within this byte vector's storage.
-    fn view(&self, offset: usize, len: usize) -> Result<StorageType, Error> {
+    /// Return a projection at `offset` with `len` bytes within the given storage.
+    fn view(storage: &Rc<StorageType>, offset: usize, len: usize) -> Result<Rc<StorageType>, Error> {
         // Verify that offset is within our storage bounds
-        let storage_len = self.length();
+        let storage_len = storage.length();
         if offset > storage_len {
             return Err(Error { description: format!("Requested view offset of {off} bytes exceeds vector length of {vlen}", off = offset, vlen = storage_len) });
         }
-
+    
         // Verify that offset + len will not overflow
         if std::usize::MAX - offset < len {
             return Err(Error { description: format!("Requested view offset of {off} and length {len} bytes would overflow maximum value of usize", off = offset, len = len) });
         }
-        
+    
         // Verify that offset + len is within our storage bounds
         if offset + len > storage_len {
             return Err(Error { description: format!("Requested view offset of {off} and length {len} bytes exceeds vector length of {vlen}", off = offset, len = len, vlen = storage_len) });
         }
 
-        match *self.storage {
+        // Return storage unmodified if the requested length equals the storage length
+        if len == storage_len {
+            return Ok((*storage).clone());
+        }
+    
+        match **storage {
             StorageType::Empty => {
                 Err(Error { description: "Cannot create view for empty vector".to_string() })
             },
             StorageType::Heap { .. } => {
                 // Create a new view around this heap storage
-                Ok(StorageType::View { storage: self.storage.clone(), voffset: offset, vlen: len })
+                Ok(Rc::new(StorageType::View { vstorage: (*storage).clone(), voffset: offset, vlen: len }))
             },
             StorageType::Append { ref lhs, ref rhs, .. } => {
-                Err(Error { description: "Not yet implemented".to_string() })
+                // If a single side encompasses the requested range, create a View around that side;
+                // otherwise the range spans both sides and we need to construct a new Append with
+                // two new Views
+                let lhs_len = lhs.length();
+                if offset + len < lhs_len {
+                    // Drop the entire rhs
+                    ByteVector::view(&lhs, offset, len)
+                } else if offset >= lhs_len {
+                    // Drop the entire lhs
+                    let rhs_offset = offset - lhs_len;
+                    ByteVector::view(&rhs, rhs_offset, len)
+                } else {
+                    // Create a new Append that spans portions of lhs and rhs
+                    let lhs_view_len = lhs_len - offset;
+                    let rhs_view_len = len - lhs_view_len;
+                    ByteVector::view(&lhs, offset, lhs_view_len).and_then(|lhs_view| {
+                        ByteVector::view(&rhs, 0, rhs_view_len).map(|rhs_view| {
+                            Rc::new(StorageType::Append { lhs: lhs_view, rhs: rhs_view, len: lhs_view_len + rhs_view_len })
+                        })
+                    })
+                }
             },
-            StorageType::View { ref storage, ref voffset, ref vlen } => {
+            StorageType::View { ref voffset, .. } => {
                 // Create a new view around this view's underlying storage
-                Ok(StorageType::View { storage: storage.clone(), voffset: voffset + offset, vlen: len })
+                Ok(Rc::new(StorageType::View { vstorage: storage.clone(), voffset: voffset + offset, vlen: len }))
             }
         }
     }
@@ -87,7 +112,7 @@ impl PartialEq for ByteVector {
         }
 
         // This is a pretty inefficient implementation that reads a single byte at a time
-        let len = self.length() as usize;
+        let len = self.length();
         for i in 0..len {
             let lhs = self.storage.unsafe_get(i);
             let rhs = other.storage.unsafe_get(i);
@@ -100,6 +125,20 @@ impl PartialEq for ByteVector {
     }
 }
 
+impl Debug for ByteVector {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        // Inefficient, but whatever
+        let len = self.length();
+        for i in 0..len {
+            let result = self.storage.unsafe_get(i).fmt(f);
+            if result.is_err() {
+                return result;
+            }
+        }
+        Ok(())
+    }
+}
+
 /// A sum type over all supported storage object types.
 #[derive(Debug)]
 enum StorageType {
@@ -108,7 +147,7 @@ enum StorageType {
     Append { lhs: Rc<StorageType>, rhs: Rc<StorageType>, len: usize },
     // TODO: Note the 'v' prefix; I couldn't find a way to rename the variables while destructuring
     // in a match, so this was the only way to avoid colliding with the offset/len function parameters
-    View { storage: Rc<StorageType>, voffset: usize, vlen: usize }
+    View { vstorage: Rc<StorageType>, voffset: usize, vlen: usize }
 }
 
 impl StorageType {
@@ -182,10 +221,10 @@ impl StorageType {
                     Err(e) => Err(e)
                 }
             },
-            StorageType::View { ref storage, ref voffset, ref vlen } => {
+            StorageType::View { ref vstorage, ref voffset, ref vlen } => {
                 // Let the backing storage perform the read
                 let count = std::cmp::min(*vlen, len);
-                storage.read(buf, *voffset + offset, count)
+                vstorage.read(buf, *voffset + offset, count)
             }
         }
     }
@@ -331,36 +370,28 @@ mod tests {
 
         let result = bv.drop(2);
         assert!(result.is_ok());
-        println!("{:?}", result);
         assert_eq!(result.unwrap(), buffered(&vec![3, 4]));
     }
 
-    // #[test]
-    // fn drop_should_work_for_append_vector() {
-    //     let bytes = vec![1, 2, 3, 4];
-    //     let lhs = buffered(&bytes);
-    //     let rhs = buffered(&bytes);
-    //     let bv = append(&lhs, &rhs);
+    #[test]
+    fn drop_should_work_for_append_vector() {
+        let bytes = vec![1, 2, 3, 4];
+        let lhs = buffered(&bytes);
+        let rhs = buffered(&bytes);
+        let bv = append(&lhs, &rhs);
 
-    //     // Verify case where drop takes from lhs only
-    //     {
-    //         let result = bv.drop(2);
-    //         assert!(result.is_ok());
-    //         assert_eq!(result.unwrap(), buffered(&vec![1, 2]));
-    //     }
+        // Verify case where drop takes part of lhs only
+        {
+            let result = bv.drop(2);
+            assert!(result.is_ok());
+            assert_eq!(result.unwrap(), buffered(&vec![3, 4, 1, 2, 3, 4]));
+        }
 
-    //     // Verify case where drop takes from rhs only
-    //     {
-    //         let result = bv.drop(2);
-    //         assert!(result.is_ok());
-    //         assert_eq!(result.unwrap(), buffered(&vec![2, 3]));
-    //     }
-
-    //     // Verify case where read takes from both lhs and rhs
-    //     {
-    //         let result = bv.drop(2);
-    //         assert!(result.is_ok());
-    //         assert_eq!(result.unwrap(), buffered(&vec![4, 1]));
-    //     }
-    // }
+        // Verify case where drop takes from both lhs and rhs
+        {
+            let result = bv.drop(6);
+            assert!(result.is_ok());
+            assert_eq!(result.unwrap(), buffered(&vec![3, 4]));
+        }
+    }
 }

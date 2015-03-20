@@ -37,7 +37,8 @@ trait Encoder<T> {
 }
 
 /// A result type, consisting of a decoded value and any unconsumed data, returned by Decoder operations.
-struct DecoderResult<T> {
+#[allow(dead_code)]
+pub struct DecoderResult<T> {
     value: T,
     remainder: ByteVector
 }
@@ -105,10 +106,12 @@ mod tests {
                 },
                 None => Ok(())
             };
-            compare_result.and_then(|ignore| {
-                // Decode and drop the remainder
-                codec.decode(&encoded).map(|decoded| decoded.value)
-            })
+            if compare_result.is_err() {
+                return Err(compare_result.unwrap_err());
+            }
+            
+            // Decode and drop the remainder
+            codec.decode(&encoded).map(|decoded| decoded.value)
         });
 
         // Verify result
