@@ -216,4 +216,13 @@ mod tests {
             Err(e) => assert_eq!(e.message(), "section/header/magic: Requested read offset of 0 and length 1 bytes exceeds vector length of 0")
         }
     }
+
+    #[test]
+    fn the_hcodec_macro_should_work_with_context_injected_codecs() {
+        let codec = hcodec!(
+            ("first" | uint8()),
+            ("second" | uint8()),
+            ("third" | uint8()));
+        assert_round_trip_bytes(&codec, &hlist!(7u8, 3u8, 1u8), &Some(byte_vector::buffered(&vec!(7u8, 3u8, 1u8))));
+    }
 }
