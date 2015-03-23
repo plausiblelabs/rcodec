@@ -167,10 +167,10 @@ mod tests {
         let codec2 = hlist_prepend_codec(uint8(), codec1);
         assert_round_trip_bytes(&codec2, &hlist!(7u8, 3u8), &Some(byte_vector::buffered(&vec!(7u8, 3u8))));
     }
-    
-    // #[test]
-    // fn an_hlist_codec_should_round_trip() {
-    //     let codec = hcodec!(uint8(), uint8());
-    //     assert_round_trip_bytes(codec, &Box::new(hlist!(7u8, 3u8)), Some(byte_vector::buffered(&vec!(7u8, 3u8))));
-    // }
+
+    #[test]
+    fn an_hlist_codec_should_round_trip() {
+        let codec = hcodec!(uint8(), uint8(), uint8());
+        assert_round_trip_bytes(&codec, &hlist!(7u8, 3u8, 1u8), &Some(byte_vector::buffered(&vec!(7u8, 3u8, 1u8))));
+    }
 }
