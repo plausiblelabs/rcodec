@@ -9,6 +9,7 @@
 use error::Error;
 use byte_vector;
 use byte_vector::ByteVector;
+use hlist;
 use hlist::*;
 
 /// Implements encoding and decoding of values of type `T`.
@@ -87,24 +88,46 @@ pub fn uint8() -> Codec<u8> {
 }
 
 /// XXX: Rough sketch of an HList codec
-struct HListEncoder;
-impl<H, T> Encoder<Box<HCons<H, T>>> for HListEncoder {
-    fn encode(&self, value: &Box<HCons<H, T>>) -> EncodeResult {
-        Err(Error { description: "Not yet implemented".to_string() })
+// struct HListPrependEncoder<A, L: HList> { a: Box<Codec<A>>, l: Box<Codec<L>> }
+// impl<A, L: HList> Encoder<HCons<A, L>> for HListPrependEncoder<A, L> {
+//     fn encode(&self, value: &HCons<A, L>) -> EncodeResult {
+//         Err(Error { description: "Not yet implemented".to_string() })
+//     }
+// }
+
+// struct HListPrependDecoder<A, L: HList> { a: Box<Codec<A>>, l: Box<Codec<L>> }
+// impl<A, L: HList> Decoder<HCons<A, L>> for HListPrependDecoder<A, L> {
+//     fn decode(&self, bv: &ByteVector) -> DecodeResult<HCons<A, L>> {
+//         Err(Error { description: "Not yet implemented".to_string() })
+//     }
+// }
+
+// pub fn hlist_prepend_codec<A, L: HList>(a: Codec<A>, l: Codec<L>) -> Codec<HCons<A, L>> {
+//     Codec {
+//         encoder: Box::new(HListPrependEncoder { a: Box::new(a), l: Box::new(l) }),
+//         decoder: Box::new(HListPrependDecoder { a: Box::new(a), l: Box::new(l) })
+//     }
+// }
+
+struct HNilEncoder;
+impl Encoder<HNil> for HNilEncoder {
+    fn encode(&self, value: &HNil) -> EncodeResult {
+        Ok(byte_vector::empty())
     }
 }
 
-struct HListDecoder;
-impl<H, T> Decoder<Box<HCons<H, T>>> for HListDecoder {
-    fn decode(&self, bv: &ByteVector) -> DecodeResult<Box<HCons<H, T>>> {
-        Err(Error { description: "Not yet implemented".to_string() })
+struct HNilDecoder;
+impl Decoder<HNil> for HNilDecoder {
+    fn decode(&self, bv: &ByteVector) -> DecodeResult<HNil> {
+        // TODO: This creates an unnecessary view
+        bv.drop(0).map(|rem| DecoderResult { value: HNil, remainder: rem })
     }
 }
 
-pub fn hlist_codec<H, T>(codecs: &HCons<H, T>) -> Codec<Box<HCons<H, T>>> {
+pub fn hnil_codec() -> Codec<HNil> {
     Codec {
-        encoder: Box::new(HListEncoder),
-        decoder: Box::new(HListDecoder)
+        encoder: Box::new(HNilEncoder),
+        decoder: Box::new(HNilDecoder)
     }
 }
 
@@ -112,10 +135,11 @@ pub fn hlist_codec<H, T>(codecs: &HCons<H, T>) -> Codec<Box<HCons<H, T>>> {
 mod tests {
     use super::*;
     use std::fmt::Debug;
+    use std::intrinsics::*;
     use error::Error;
     use byte_vector;
     use byte_vector::ByteVector;
-    use hlist::HList;
+    use hlist::*;
 
     fn assert_round_trip_bytes<T: Eq + Debug>(codec: Codec<T>, value: &T, raw_bytes: Option<ByteVector>) {
         // Encode
@@ -151,9 +175,23 @@ mod tests {
         assert_round_trip_bytes(uint8(), &7u8, Some(byte_vector::buffered(&vec!(7u8))));
     }
 
+    #[test]
+    fn an_hnil_should_round_trip() {
+        assert_round_trip_bytes(hnil_codec(), &HNil, Some(byte_vector::empty()));
+    }
+
+    // #[test]
+    // fn an_hlist_prepend_codec_should_work() {
+    //     let codec1 = hlist_prepend_codec(uint8(), hnil_codec());
+    //     assert_round_trip_bytes(codec1, &hlist!(7u8), Some(byte_vector::buffered(&vec!(7u8))));
+
+    //     // let codec2 = hlist_prepend_codec(uint8(), codec1);
+    //     // assert_round_trip_bytes(codec2, &hlist!(7u8, 3u8), Some(byte_vector::buffered(&vec!(7u8, 3u8))));
+    // }
+    
     // #[test]
     // fn an_hlist_codec_should_round_trip() {
-    //     let codec = hlist_codec(&hlist!(uint8(), uint8()));
+    //     let codec = hcodec!(uint8(), uint8());
     //     assert_round_trip_bytes(codec, &Box::new(hlist!(7u8, 3u8)), Some(byte_vector::buffered(&vec!(7u8, 3u8))));
     // }
 }
