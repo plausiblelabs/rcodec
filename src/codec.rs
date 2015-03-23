@@ -220,9 +220,9 @@ mod tests {
     #[test]
     fn the_hcodec_macro_should_work_with_context_injected_codecs() {
         let codec = hcodec!(
-            ("first" | uint8()),
+            ("first"  | uint8()),
             ("second" | uint8()),
-            ("third" | uint8()));
+            ("third"  | uint8()));
         assert_round_trip_bytes(&codec, &hlist!(7u8, 3u8, 1u8), &Some(byte_vector::buffered(&vec!(7u8, 3u8, 1u8))));
     }
 }
