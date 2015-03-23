@@ -35,7 +35,7 @@ impl ByteVector {
     pub fn drop(&self, len: usize) -> Result<ByteVector, Error> {
         let storage_len = self.length();
         if len > storage_len {
-            return Err(Error { description: format!("Requested length of {len} bytes exceeds vector length of {vlen}", len = len, vlen = storage_len) });
+            return Err(Error::new(format!("Requested length of {len} bytes exceeds vector length of {vlen}", len = len, vlen = storage_len)));
         }
         
         ByteVector::view(&self.storage, len, storage_len - len).map(|remainder| {
@@ -48,17 +48,17 @@ impl ByteVector {
         // Verify that offset is within our storage bounds
         let storage_len = storage.length();
         if offset > storage_len {
-            return Err(Error { description: format!("Requested view offset of {off} bytes exceeds vector length of {vlen}", off = offset, vlen = storage_len) });
+            return Err(Error::new(format!("Requested view offset of {off} bytes exceeds vector length of {vlen}", off = offset, vlen = storage_len)));
         }
     
         // Verify that offset + len will not overflow
         if std::usize::MAX - offset < len {
-            return Err(Error { description: format!("Requested view offset of {off} and length {len} bytes would overflow maximum value of usize", off = offset, len = len) });
+            return Err(Error::new(format!("Requested view offset of {off} and length {len} bytes would overflow maximum value of usize", off = offset, len = len)));
         }
     
         // Verify that offset + len is within our storage bounds
         if offset + len > storage_len {
-            return Err(Error { description: format!("Requested view offset of {off} and length {len} bytes exceeds vector length of {vlen}", off = offset, len = len, vlen = storage_len) });
+            return Err(Error::new(format!("Requested view offset of {off} and length {len} bytes exceeds vector length of {vlen}", off = offset, len = len, vlen = storage_len)));
         }
 
         // Return storage unmodified if the requested length equals the storage length
@@ -68,7 +68,7 @@ impl ByteVector {
     
         match **storage {
             StorageType::Empty => {
-                Err(Error { description: "Cannot create view for empty vector".to_string() })
+                Err(Error::new("Cannot create view for empty vector".to_string()))
             },
             StorageType::Heap { .. } => {
                 // Create a new view around this heap storage
@@ -166,22 +166,22 @@ impl StorageType {
         // Verify that offset is within our storage bounds
         let storage_len = self.length();
         if offset > storage_len {
-            return Err(Error { description: format!("Requested read offset of {off} bytes exceeds vector length of {vlen}", off = offset, vlen = storage_len) });
+            return Err(Error::new(format!("Requested read offset of {off} bytes exceeds vector length of {vlen}", off = offset, vlen = storage_len)));
         }
 
         // Verify that offset + len will not overflow
         if std::usize::MAX - offset < len {
-            return Err(Error { description: format!("Requested read offset of {off} and length {len} bytes would overflow maximum value of usize", off = offset, len = len) });
+            return Err(Error::new(format!("Requested read offset of {off} and length {len} bytes would overflow maximum value of usize", off = offset, len = len)));
         }
         
         // Verify that offset + len is within our storage bounds
         if offset + len > storage_len {
-            return Err(Error { description: format!("Requested read offset of {off} and length {len} bytes exceeds vector length of {vlen}", off = offset, len = len, vlen = storage_len) });
+            return Err(Error::new(format!("Requested read offset of {off} and length {len} bytes exceeds vector length of {vlen}", off = offset, len = len, vlen = storage_len)));
         }
         
         match *self {
             StorageType::Empty => {
-                Err(Error { description: "Cannot read from empty vector".to_string() })
+                Err(Error::new("Cannot read from empty vector".to_string()))
             },
             StorageType::Heap { ref bytes } => {
                 let count = std::cmp::min(len, bytes.len() - offset);

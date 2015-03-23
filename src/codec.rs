@@ -7,6 +7,7 @@
 //
 
 use std::rc::Rc;
+use core;
 
 use error::Error;
 use byte_vector;
@@ -111,6 +112,30 @@ pub fn hlist_prepend_codec<A: 'static, L: 'static + HList>(a_codec: Codec<A>, l_
     }
 }
 
+/// Override for the '|' operator that creates a new codec that injects additional context (e.g. in error messages)
+/// into the codec on the right-hand side.
+impl<T: 'static> core::ops::BitOr<Codec<T>> for String {
+    type Output = Codec<T>;
+
+    fn bitor(self, rhs: Codec<T>) -> Codec<T> {
+        let encoder = Rc::new(rhs);
+        let decoder = encoder.clone();
+
+        // XXX: Ugh
+        let encoder_ctx = self.clone();
+        let decoder_ctx = self.clone();
+
+        Codec {
+            encoder: Box::new(move |value| {
+                encoder.encode(value).map_err(|e| e.push_context(&encoder_ctx))
+            }),
+            decoder: Box::new(move |bv| {
+                decoder.decode(bv).map_err(|e| e.push_context(&decoder_ctx))
+            })
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -127,7 +152,7 @@ mod tests {
             let compare_result = match *raw_bytes {
                 Some(ref expected) => {
                     if encoded != *expected {
-                        Err(Error { description: "Encoded bytes do not match expected bytes".to_string() })
+                        Err(Error::new("Encoded bytes do not match expected bytes".to_string()))
                     } else {
                         Ok(())
                     }
@@ -172,5 +197,23 @@ mod tests {
     fn an_hlist_codec_should_round_trip() {
         let codec = hcodec!(uint8(), uint8(), uint8());
         assert_round_trip_bytes(&codec, &hlist!(7u8, 3u8, 1u8), &Some(byte_vector::buffered(&vec!(7u8, 3u8, 1u8))));
+    }
+
+    #[allow(unused_parens)]
+    #[test]
+    fn context_should_be_pushed_when_using_the_bitor_operator() {
+        let input = byte_vector::empty();
+        let codec =
+            ("section".to_string() |
+             ("header".to_string() |
+              ("magic".to_string() | uint8())
+              )
+             );
+
+        // Verify that the error message is prefexed with the correct context
+        match codec.decode(&input) {
+            Ok(..) => assert!(false),
+            Err(e) => assert_eq!(e.message(), "section/header/magic: Requested read offset of 0 and length 1 bytes exceeds vector length of 0")
+        }
     }
 }

@@ -17,3 +17,6 @@ pub mod error;
 pub mod hlist;
 pub mod byte_vector;
 pub mod codec;
+
+// The following allows us to make use of the core crate (e.g. for core::ops).
+extern crate core;
