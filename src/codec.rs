@@ -6,6 +6,8 @@
 // Scala scodec library: https://github.com/scodec/scodec/
 //
 
+use std::rc::Rc;
+
 use error::Error;
 use byte_vector;
 use byte_vector::ByteVector;
@@ -65,6 +67,7 @@ pub fn uint8() -> Codec<u8> {
     }
 }
 
+/// Codec for HNil type.
 #[allow(unused_variables)]
 pub fn hnil_codec() -> Codec<HNil> {
     Codec {
@@ -78,27 +81,35 @@ pub fn hnil_codec() -> Codec<HNil> {
     }
 }
 
-/// XXX: Rough sketch of an HList codec
-// struct HListPrependEncoder<A, L: HList> { a: Box<Codec<A>>, l: Box<Codec<L>> }
-// impl<A, L: HList> Encoder<HCons<A, L>> for HListPrependEncoder<A, L> {
-//     fn encode(&self, value: &HCons<A, L>) -> EncodeResult {
-//         Err(Error { description: "Not yet implemented".to_string() })
-//     }
-// }
-
-// struct HListPrependDecoder<A, L: HList> { a: Box<Codec<A>>, l: Box<Codec<L>> }
-// impl<A, L: HList> Decoder<HCons<A, L>> for HListPrependDecoder<A, L> {
-//     fn decode(&self, bv: &ByteVector) -> DecodeResult<HCons<A, L>> {
-//         Err(Error { description: "Not yet implemented".to_string() })
-//     }
-// }
-
-// pub fn hlist_prepend_codec<A, L: HList>(a: Codec<A>, l: Codec<L>) -> Codec<HCons<A, L>> {
-//     Codec {
-//         encoder: Box::new(HListPrependEncoder { a: Box::new(a), l: Box::new(l) }),
-//         decoder: Box::new(HListPrependDecoder { a: Box::new(a), l: Box::new(l) })
-//     }
-// }
+/// Codec used to convert an HList of codecs into a single codec that encodes/decodes an HList of values.
+pub fn hlist_prepend_codec<A: 'static, L: 'static + HList>(a_codec: Codec<A>, l_codec: Codec<L>) -> Codec<HCons<A, L>> {
+    // XXX: Holy moly. This is my attempt at making it possible to capture the codecs in the two separate closures below.
+    let a_encoder = Rc::new(a_codec);
+    let a_decoder = a_encoder.clone();
+    let l_encoder = Rc::new(l_codec);
+    let l_decoder = l_encoder.clone();
+    
+    Codec {
+        encoder: Box::new(move |value| {
+            // TODO: If we try to work with `value` directly, the compiler gives us an error
+            // ("the type of this value must be known in this context").  We can work around
+            // it by explicitly declaring the type here.
+            let v: &HCons<A, L> = value;
+            // TODO: Generalize this as an encode_both() function
+            a_encoder.encode(&v.0).and_then(|encoded_a| {
+                l_encoder.encode(&v.1).map(|encoded_l| byte_vector::append(&encoded_a, &encoded_l))
+            })
+        }),
+        decoder: Box::new(move |bv| {
+            // TODO: Generalize this as a decode_both_combine() function
+            a_decoder.decode(&bv).and_then(|decoded_a| {
+                l_decoder.decode(&decoded_a.remainder).map(move |decoded_l| {
+                    DecoderResult { value: HCons(decoded_a.value, decoded_l.value), remainder: decoded_l.remainder }
+                })
+            })
+        })
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -109,11 +120,11 @@ mod tests {
     use byte_vector::ByteVector;
     use hlist::*;
 
-    fn assert_round_trip_bytes<T: Eq + Debug>(codec: Codec<T>, value: &T, raw_bytes: Option<ByteVector>) {
+    fn assert_round_trip_bytes<T: Eq + Debug>(codec: &Codec<T>, value: &T, raw_bytes: &Option<ByteVector>) {
         // Encode
         let result = codec.encode(value).and_then(|encoded| {
             // Compare encoded bytes to the expected bytes, if provided
-            let compare_result = match raw_bytes {
+            let compare_result = match *raw_bytes {
                 Some(ref expected) => {
                     if encoded != *expected {
                         Err(Error { description: "Encoded bytes do not match expected bytes".to_string() })
@@ -140,22 +151,22 @@ mod tests {
 
     #[test]
     fn a_u8_value_should_round_trip() {
-        assert_round_trip_bytes(uint8(), &7u8, Some(byte_vector::buffered(&vec!(7u8))));
+        assert_round_trip_bytes(&uint8(), &7u8, &Some(byte_vector::buffered(&vec!(7u8))));
     }
 
     #[test]
     fn an_hnil_should_round_trip() {
-        assert_round_trip_bytes(hnil_codec(), &HNil, Some(byte_vector::empty()));
+        assert_round_trip_bytes(&hnil_codec(), &HNil, &Some(byte_vector::empty()));
     }
 
-    // #[test]
-    // fn an_hlist_prepend_codec_should_work() {
-    //     let codec1 = hlist_prepend_codec(uint8(), hnil_codec());
-    //     assert_round_trip_bytes(codec1, &hlist!(7u8), Some(byte_vector::buffered(&vec!(7u8))));
+    #[test]
+    fn an_hlist_prepend_codec_should_work() {
+        let codec1 = hlist_prepend_codec(uint8(), hnil_codec());
+        assert_round_trip_bytes(&codec1, &hlist!(7u8), &Some(byte_vector::buffered(&vec!(7u8))));
 
-    //     // let codec2 = hlist_prepend_codec(uint8(), codec1);
-    //     // assert_round_trip_bytes(codec2, &hlist!(7u8, 3u8), Some(byte_vector::buffered(&vec!(7u8, 3u8))));
-    // }
+        let codec2 = hlist_prepend_codec(uint8(), codec1);
+        assert_round_trip_bytes(&codec2, &hlist!(7u8, 3u8), &Some(byte_vector::buffered(&vec!(7u8, 3u8))));
+    }
     
     // #[test]
     // fn an_hlist_codec_should_round_trip() {
