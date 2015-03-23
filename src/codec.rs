@@ -114,7 +114,7 @@ pub fn hlist_prepend_codec<A: 'static, L: 'static + HList>(a_codec: Codec<A>, l_
 
 /// Override for the '|' operator that creates a new codec that injects additional context (e.g. in error messages)
 /// into the codec on the right-hand side.
-impl<T: 'static> core::ops::BitOr<Codec<T>> for String {
+impl<T: 'static> core::ops::BitOr<Codec<T>> for &'static str {
     type Output = Codec<T>;
 
     fn bitor(self, rhs: Codec<T>) -> Codec<T> {
@@ -127,10 +127,10 @@ impl<T: 'static> core::ops::BitOr<Codec<T>> for String {
 
         Codec {
             encoder: Box::new(move |value| {
-                encoder.encode(value).map_err(|e| e.push_context(&encoder_ctx))
+                encoder.encode(value).map_err(|e| e.push_context(encoder_ctx))
             }),
             decoder: Box::new(move |bv| {
-                decoder.decode(bv).map_err(|e| e.push_context(&decoder_ctx))
+                decoder.decode(bv).map_err(|e| e.push_context(decoder_ctx))
             })
         }
     }
@@ -204,9 +204,9 @@ mod tests {
     fn context_should_be_pushed_when_using_the_bitor_operator() {
         let input = byte_vector::empty();
         let codec =
-            ("section".to_string() |
-             ("header".to_string() |
-              ("magic".to_string() | uint8())
+            ("section" |
+             ("header" |
+              ("magic" | uint8())
               )
              );
 
