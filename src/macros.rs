@@ -159,20 +159,14 @@ macro_rules! scodec {
 /// Shorthand for defining record structs that support HList conversions.
 #[macro_export]
 macro_rules! record_struct {
-    { $stype:ident, $($fieldname:ident: $fieldtype:ty),+ } => {
+    // TODO: Sadly, macros cannot expand to a type, so we have to manually pass in the HList type here
+    // instead of just generating it from the list of field types
+    { $stype:ident, $hlisttype:ty, $($fieldname:ident: $fieldtype:ty),+ } => {
         #[derive(Debug, PartialEq, Eq)]
         pub struct $stype {
             $($fieldname: $fieldtype),+
         }
 
-        // TODO: Sigh, apparently expansion fails for this inner macro call
-        record_struct_impl!($stype, record_struct_hlist_type!($($fieldtype),+), $($fieldname),+);
-        //record_struct_impl!($stype, HCons<u8, HCons<u8, HNil>>, $($fieldname),+);
-    };
-}
-
-macro_rules! record_struct_impl {
-    { $stype:ident, $hlisttype:ty, $($fieldname:ident),+ } => {
         #[allow(dead_code)]
         impl $stype {
             fn from_hlist(hlist: $hlisttype) -> $stype {
@@ -185,15 +179,6 @@ macro_rules! record_struct_impl {
                 hlist!($(self.$fieldname),+)
             }
         }
-    };
-}
-
-macro_rules! record_struct_hlist_type {
-    { $head:ty } => {
-        $crate::hlist::HCons<$head, $crate::hlist::HNil>
-    };
-    { $head:ty, $($tail:ty),+ } => {
-        $crate::hlist::HCons<$head, record_struct_hlist_type!($($tail),+)>
     };
 }
 

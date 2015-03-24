@@ -222,14 +222,14 @@ mod tests {
         assert_round_trip_bytes(&codec, &hlist!(7u8, 3u8, 1u8), &Some(byte_vector::buffered(&vec!(7u8, 3u8, 1u8))));
     }
 
-    // record_struct!(
-    //     TestStruct,
-    //     foo: u8,
-    //     bar: u8);
+    record_struct!(
+        TestStruct, HCons<u8, HCons<u8, HNil>>,
+        foo: u8,
+        bar: u8);
 
-    // #[test]
-    // fn the_struct_codec_should_round_trip() {
-    //     let codec = scodec!(TestStruct, hcodec!(uint8(), uint8()));
-    //     assert_round_trip_bytes(&codec, &TestStruct { foo: 7u8, bar: 3u8 }, &Some(byte_vector::buffered(&vec!(7u8, 3u8))));
-    // }
+    #[test]
+    fn the_struct_codec_should_round_trip() {
+        let codec = scodec!(TestStruct, hcodec!(uint8(), uint8()));
+        assert_round_trip_bytes(&codec, &TestStruct { foo: 7u8, bar: 3u8 }, &Some(byte_vector::buffered(&vec!(7u8, 3u8))));
+    }
 }
