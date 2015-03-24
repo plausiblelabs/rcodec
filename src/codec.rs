@@ -91,14 +91,10 @@ pub fn hlist_prepend_codec<A: 'static, L: 'static + HList>(a_codec: Codec<A>, l_
     let l_decoder = l_encoder.clone();
     
     Codec {
-        encoder: Box::new(move |value| {
-            // TODO: If we try to work with `value` directly, the compiler gives us an error
-            // ("the type of this value must be known in this context").  We can work around
-            // it by explicitly declaring the type here.
-            let v: &HCons<A, L> = value;
+        encoder: Box::new(move |value: &HCons<A, L>| {
             // TODO: Generalize this as an encode_both() function
-            a_encoder.encode(&v.0).and_then(|encoded_a| {
-                l_encoder.encode(&v.1).map(|encoded_l| byte_vector::append(&encoded_a, &encoded_l))
+            a_encoder.encode(&value.0).and_then(|encoded_a| {
+                l_encoder.encode(&value.1).map(|encoded_l| byte_vector::append(&encoded_a, &encoded_l))
             })
         }),
         decoder: Box::new(move |bv| {
@@ -140,6 +136,7 @@ impl<T: 'static> core::ops::BitOr<Codec<T>> for &'static str {
 mod tests {
     use super::*;
     use std::fmt::Debug;
+    use std::rc::Rc;
     use error::Error;
     use byte_vector;
     use byte_vector::ByteVector;
@@ -225,4 +222,15 @@ mod tests {
             ("third"  | uint8()));
         assert_round_trip_bytes(&codec, &hlist!(7u8, 3u8, 1u8), &Some(byte_vector::buffered(&vec!(7u8, 3u8, 1u8))));
     }
+
+    // record_struct!(
+    //     TestStruct,
+    //     foo: u8,
+    //     bar: u8);
+
+    // #[test]
+    // fn the_struct_codec_should_round_trip() {
+    //     let codec = scodec!(TestStruct, hcodec!(uint8(), uint8()));
+    //     assert_round_trip_bytes(&codec, &TestStruct { foo: 7u8, bar: 3u8 }, &Some(byte_vector::buffered(&vec!(7u8, 3u8))));
+    // }
 }
