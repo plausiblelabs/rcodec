@@ -16,6 +16,9 @@ pub mod macros;
 pub mod error;
 pub mod hlist;
 pub mod byte_vector;
+
+// Let us have lowercase names for static codec instances, e.g. uint8, please.
+#[allow(non_upper_case_globals)]
 pub mod codec;
 
 // The following allows us to make use of the core crate (e.g. for core::ops).
