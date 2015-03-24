@@ -139,7 +139,7 @@ macro_rules! scodec {
     { $stype:ident, $hcodec:expr } => {
         {
             let _hcodec = $hcodec;
-            let _encoder = Rc::new(_hcodec);
+            let _encoder = ::std::rc::Rc::new(_hcodec);
             let _decoder = _encoder.clone();
             
             Codec {
@@ -177,7 +177,7 @@ macro_rules! record_struct_impl {
         impl $stype {
             fn from_hlist(hlist: $hlisttype) -> $stype {
                 match hlist {
-                    record_struct_hlist_pattern!($($fieldname),+) => TestStruct { $($fieldname: $fieldname),+ }
+                    record_struct_hlist_pattern!($($fieldname),+) => $stype { $($fieldname: $fieldname),+ }
                 }
             }
             

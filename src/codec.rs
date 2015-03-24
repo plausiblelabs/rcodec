@@ -136,7 +136,6 @@ impl<T: 'static> core::ops::BitOr<Codec<T>> for &'static str {
 mod tests {
     use super::*;
     use std::fmt::Debug;
-    use std::rc::Rc;
     use error::Error;
     use byte_vector;
     use byte_vector::ByteVector;
