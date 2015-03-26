@@ -1,8 +1,10 @@
 [package]
 
-name = "rcodec"
+name = "rcodec_macros"
 version = "0.0.1"
 authors = ["Chris Campbell <campbell@plausible.coop>"]
 
-[dependencies.rcodec_macros]
-path = "rcodec_macros"
+[lib]
+
+name = "rcodec_macros"
+plugin = true

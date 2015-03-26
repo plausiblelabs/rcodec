@@ -23,27 +23,27 @@ pub struct Codec<T> {
 
 #[allow(dead_code)]
 impl<T> Codec<T> {
-    fn encode(&self, value: &T) -> EncodeResult {
+    pub fn encode(&self, value: &T) -> EncodeResult {
         (*self.encoder)(value)
     }
 
-    fn decode(&self, bv: &ByteVector) -> DecodeResult<T> {
+    pub fn decode(&self, bv: &ByteVector) -> DecodeResult<T> {
         (*self.decoder)(bv)
     }
 }
 
 /// A result type returned by Encoder operations.
-type EncodeResult = Result<ByteVector, Error>;
+pub type EncodeResult = Result<ByteVector, Error>;
 
 /// A result type, consisting of a decoded value and any unconsumed data, returned by Decoder operations.
 #[allow(dead_code)]
 pub struct DecoderResult<T> {
-    value: T,
-    remainder: ByteVector
+    pub value: T,
+    pub remainder: ByteVector
 }
 
 /// A result type returned by Decoder operations.
-type DecodeResult<T> = Result<DecoderResult<T>, Error>;
+pub type DecodeResult<T> = Result<DecoderResult<T>, Error>;
 
 /// Unsigned 8-bit integer codec.
 pub fn uint8() -> Codec<u8> {
@@ -91,14 +91,10 @@ pub fn hlist_prepend_codec<A: 'static, L: 'static + HList>(a_codec: Codec<A>, l_
     let l_decoder = l_encoder.clone();
     
     Codec {
-        encoder: Box::new(move |value| {
-            // TODO: If we try to work with `value` directly, the compiler gives us an error
-            // ("the type of this value must be known in this context").  We can work around
-            // it by explicitly declaring the type here.
-            let v: &HCons<A, L> = value;
+        encoder: Box::new(move |value: &HCons<A, L>| {
             // TODO: Generalize this as an encode_both() function
-            a_encoder.encode(&v.0).and_then(|encoded_a| {
-                l_encoder.encode(&v.1).map(|encoded_l| byte_vector::append(&encoded_a, &encoded_l))
+            a_encoder.encode(&value.0).and_then(|encoded_a| {
+                l_encoder.encode(&value.1).map(|encoded_l| byte_vector::append(&encoded_a, &encoded_l))
             })
         }),
         decoder: Box::new(move |bv| {
@@ -195,7 +191,7 @@ mod tests {
 
     #[test]
     fn an_hlist_codec_should_round_trip() {
-        let codec = hcodec!(uint8(), uint8(), uint8());
+        let codec = hcodec!(uint8(), uint8(), uint8()); 
         assert_round_trip_bytes(&codec, &hlist!(7u8, 3u8, 1u8), &Some(byte_vector::buffered(&vec!(7u8, 3u8, 1u8))));
     }
 
@@ -224,5 +220,30 @@ mod tests {
             ("second" | uint8()),
             ("third"  | uint8()));
         assert_round_trip_bytes(&codec, &hlist!(7u8, 3u8, 1u8), &Some(byte_vector::buffered(&vec!(7u8, 3u8, 1u8))));
+    }
+
+    record_struct_with_hlist_type!(
+        TestStruct1, HCons<u8, HCons<u8, HNil>>,
+        foo: u8,
+        bar: u8);
+
+    record_struct!(
+        TestStruct2,
+        foo: u8,
+        bar: u8);
+
+    #[test]
+    fn record_structs_should_work() {
+        let hlist = hlist!(7u8, 3u8);
+        let s1 = TestStruct1::from_hlist(&hlist);
+        let s2 = TestStruct2::from_hlist(&hlist);
+        assert_eq!(s1.foo, s2.foo);
+        assert_eq!(s1.bar, s2.bar);
+    }
+
+    #[test]
+    fn a_struct_codec_should_round_trip() {
+        let codec = scodec!(TestStruct2, hcodec!(uint8(), uint8()));
+        assert_round_trip_bytes(&codec, &TestStruct2 { foo: 7u8, bar: 3u8 }, &Some(byte_vector::buffered(&vec!(7u8, 3u8))));
     }
 }

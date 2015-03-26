@@ -76,13 +76,13 @@ macro_rules! hlist_pat_tail {
 /// Converts an HList of Codecs into a Codec that operates on an HList of values.
 ///
 /// For example:
-///       hcodec!(uint8(), uint8())
+///   hcodec!(uint8(), uint8())
 ///
 /// translates to:
-///       hlist_prepend_codec(uint8(), hlist_prepend_codec(uint8(), hnil_codec()))
+///   hlist_prepend_codec(uint8(), hlist_prepend_codec(uint8(), hnil_codec()))
 ///
 /// which evaluates to:
-///       Codec<HCons<u8, HCons<u8, HNil>>>
+///   Codec<HCons<u8, HCons<u8, HNil>>>
 #[macro_export]
 macro_rules! hcodec {
     {} => {
@@ -108,5 +108,86 @@ macro_rules! hcodec_expr_tail {
     };
     { { $tail:tt } $head:expr, $($rest:tt),+ } => {
         hlist_prepend_codec($head, hcodec_expr_tail!({ $tail } $($rest),+))
+    };
+}
+
+/// Suppose we have a struct like this:
+///   struct Header {
+///     foo: u8,
+///     bar: u8
+///   }
+///
+/// We want a codec that automatically converts HList values to Header fields, like this:
+///   let header_codec = scodec!(Header, hcodec!(uint8(), uint8()));
+///
+/// which would expand to (roughly):
+///   Codec {
+///     encoder: |value| {
+///       hcodec.encode(hlist!(value.foo, value.bar))
+///     },
+///     decoder: |bv| {
+///       hcodec.decode(bv).map(|decoded| {
+///         let value = match decoded.value {
+///           HCons(foo, HCons(bar, HNil)) => Header { foo: foo, bar: bar }
+///         };
+///         DecodeResult { value: value, remainder: decoded.remainder }
+///       })
+///     }
+///   }
+#[macro_export]
+macro_rules! scodec {
+    { $stype:ident, $hcodec:expr } => {
+        {
+            let _hcodec = $hcodec;
+            let _encoder = ::std::rc::Rc::new(_hcodec);
+            let _decoder = _encoder.clone();
+            
+            Codec {
+                encoder: Box::new(move |value: &$stype| {
+                    _encoder.encode(&value.to_hlist())
+                }),
+                decoder: Box::new(move |bv| {
+                    _decoder.decode(bv).map(|decoded| {
+                        DecoderResult { value: $stype::from_hlist(&decoded.value), remainder: decoded.remainder }
+                    })
+                })
+            }
+        }
+    };
+}
+
+/// Shorthand for defining record structs that support HList conversions.
+#[macro_export]
+macro_rules! record_struct_with_hlist_type {
+    // Note that sadly, macros cannot expand to a type, so we have to manually pass in the HList type here
+    // instead of just generating it from the list of field types.  We provide the record_struct! compiler
+    // plugin as a more convenient frontend to this macro, since it can take care of building the HList type.
+    { $stype:ident, $hlisttype:ty, $($fieldname:ident: $fieldtype:ty),+ } => {
+        #[derive(Debug, PartialEq, Eq)]
+        pub struct $stype {
+            $($fieldname: $fieldtype),+
+        }
+
+        #[allow(dead_code)]
+        impl $stype {
+            fn from_hlist(hlist: &$hlisttype) -> $stype {
+                match *hlist {
+                    record_struct_hlist_pattern!($($fieldname),+) => $stype { $($fieldname: $fieldname),+ }
+                }
+            }
+            
+            fn to_hlist(&self) -> $hlisttype {
+                hlist!($(self.$fieldname),+)
+            }
+        }
+    };
+}
+
+macro_rules! record_struct_hlist_pattern {
+    { $head:ident } => {
+        $crate::hlist::HCons($head, $crate::hlist::HNil)
+    };
+    { $head:ident, $($tail:ident),+ } => {
+        $crate::hlist::HCons($head, record_struct_hlist_pattern!($($tail),+))
     };
 }

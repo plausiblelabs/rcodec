@@ -33,8 +33,7 @@ impl Error {
                 if !a.is_empty() {
                     a.push_str("/");
                 }
-                a.push_str(b.as_slice());
-                a
+                a + b
             });
             format!("{}: {}", ctx, self.description)
         }
