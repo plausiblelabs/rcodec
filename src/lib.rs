@@ -12,6 +12,9 @@
 // The following allows for macro debugging via trace_macros(true/false).
 #![feature(trace_macros)]
 
+// The following allows for using compiler plugins (e.g. record_struct).
+#![feature(plugin)]
+
 // The following is necessary to make exported macros visible.
 #[macro_use]
 pub mod macros;
