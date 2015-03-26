@@ -6,8 +6,6 @@
 // Scala scodec library: https://github.com/scodec/scodec/
 //
 
-#![plugin(record_struct)]
-
 use std::rc::Rc;
 use core;
 
@@ -224,14 +222,28 @@ mod tests {
         assert_round_trip_bytes(&codec, &hlist!(7u8, 3u8, 1u8), &Some(byte_vector::buffered(&vec!(7u8, 3u8, 1u8))));
     }
 
-    // record_struct!(
-    //     TestStruct, HCons<u8, HCons<u8, HNil>>,
-    //     foo: u8,
-    //     bar: u8);
+    record_struct_with_hlist_type!(
+        TestStruct1, HCons<u8, HCons<u8, HNil>>,
+        foo: u8,
+        bar: u8);
+
+    record_struct!(
+        TestStruct2,
+        foo: u8,
+        bar: u8);
+
+    #[test]
+    fn record_structs_should_work() {
+        let hlist = hlist!(7u8, 3u8);
+        let s1 = TestStruct1::from_hlist(&hlist);
+        let s2 = TestStruct2::from_hlist(&hlist);
+        assert_eq!(s1.foo, s2.foo);
+        assert_eq!(s1.bar, s2.bar);
+    }
 
     #[test]
     fn a_struct_codec_should_round_trip() {
-        // let codec = scodec!(TestStruct, hcodec!(uint8(), uint8()));
-        // assert_round_trip_bytes(&codec, &TestStruct { foo: 7u8, bar: 3u8 }, &Some(byte_vector::buffered(&vec!(7u8, 3u8))));
+        let codec = scodec!(TestStruct2, hcodec!(uint8(), uint8()));
+        assert_round_trip_bytes(&codec, &TestStruct2 { foo: 7u8, bar: 3u8 }, &Some(byte_vector::buffered(&vec!(7u8, 3u8))));
     }
 }

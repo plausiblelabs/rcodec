@@ -148,7 +148,7 @@ macro_rules! scodec {
                 }),
                 decoder: Box::new(move |bv| {
                     _decoder.decode(bv).map(|decoded| {
-                        DecoderResult { value: $stype::from_hlist(decoded.value), remainder: decoded.remainder }
+                        DecoderResult { value: $stype::from_hlist(&decoded.value), remainder: decoded.remainder }
                     })
                 })
             }
@@ -158,9 +158,10 @@ macro_rules! scodec {
 
 /// Shorthand for defining record structs that support HList conversions.
 #[macro_export]
-macro_rules! record_struct {
-    // TODO: Sadly, macros cannot expand to a type, so we have to manually pass in the HList type here
-    // instead of just generating it from the list of field types
+macro_rules! record_struct_with_hlist_type {
+    // Note that sadly, macros cannot expand to a type, so we have to manually pass in the HList type here
+    // instead of just generating it from the list of field types.  We provide the record_struct! compiler
+    // plugin as a more convenient frontend to this macro, since it can take care of building the HList type.
     { $stype:ident, $hlisttype:ty, $($fieldname:ident: $fieldtype:ty),+ } => {
         #[derive(Debug, PartialEq, Eq)]
         pub struct $stype {
@@ -169,8 +170,8 @@ macro_rules! record_struct {
 
         #[allow(dead_code)]
         impl $stype {
-            fn from_hlist(hlist: $hlisttype) -> $stype {
-                match hlist {
+            fn from_hlist(hlist: &$hlisttype) -> $stype {
+                match *hlist {
                     record_struct_hlist_pattern!($($fieldname),+) => $stype { $($fieldname: $fieldname),+ }
                 }
             }

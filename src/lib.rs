@@ -12,8 +12,9 @@
 // The following allows for macro debugging via trace_macros(true/false).
 #![feature(trace_macros)]
 
-// The following allows for using compiler plugins (e.g. record_struct).
+// The following allows for using macros defined in the separate rcodec_macros crate.
 #![feature(plugin)]
+#![plugin(rcodec_macros)]
 
 // The following is necessary to make exported macros visible.
 #[macro_use]
