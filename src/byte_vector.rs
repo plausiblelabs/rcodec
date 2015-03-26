@@ -134,16 +134,24 @@ impl PartialEq for ByteVector {
     }
 }
 
+const CHARS: &'static [u8] = b"0123456789abcdef";
+
 impl Debug for ByteVector {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        // Inefficient, but whatever
         let len = self.length();
+        let mut v = Vec::with_capacity(len * 2);
         for i in 0..len {
-            let result = self.storage.unsafe_get(i).fmt(f);
+            let byte = self.storage.unsafe_get(i);
+            v.push(CHARS[(byte >> 4) as usize]);
+            v.push(CHARS[(byte & 0xf) as usize]);
+        }
+        unsafe {
+            //let result = String::from_utf8_unchecked(v).fmt(f);
+            let result = f.write_str(&String::from_utf8_unchecked(v));
             if result.is_err() {
                 return result;
             }
-        }
+        };
         Ok(())
     }
 }
@@ -287,6 +295,11 @@ mod tests {
         let bv1 = append(&lhs, &rhs);
         let bv2 = bv1.clone();
         assert_eq!(bv1, bv2);
+    }
+
+    #[test]
+    fn debug_string_should_be_formatted_correctly() {
+        assert_eq!("01020eff", format!("{:?}", buffered(&vec![1u8, 2, 14, 255])))
     }
     
     #[test]

@@ -68,6 +68,29 @@ pub fn uint8() -> Codec<u8> {
     }
 }
 
+/// Codec that always encodes the given byte vector, and decodes by returning a unit result if the actual bytes match
+/// the given byte vector or an error otherwise.
+pub fn constant(bytes: &ByteVector) -> Codec<()> {
+    // TODO: Can we avoid all the extra cloning here?
+    let encoder_bytes = (*bytes).clone();
+    let decoder_bytes = (*bytes).clone();
+    
+    Codec {
+        encoder: Box::new(move |_unit| {
+            Ok(encoder_bytes.clone())
+        }),
+        decoder: Box::new(move |bv| {
+            bv.take(decoder_bytes.length()).and_then(|taken| {
+                if taken == decoder_bytes {
+                    Ok(DecoderResult { value: (), remainder: bv.drop(decoder_bytes.length()).unwrap() })
+                } else {
+                    Err(Error::new(format!("Expected constant {:?} but got {:?}", decoder_bytes, taken)))
+                }
+            })
+        })
+    }
+}
+
 /// Codec for HNil type.
 #[allow(unused_variables)]
 pub fn hnil_codec() -> Codec<HNil> {
@@ -76,8 +99,7 @@ pub fn hnil_codec() -> Codec<HNil> {
             Ok(byte_vector::empty())
         }),
         decoder: Box::new(|bv| {
-            // TODO: Can we avoid creating a view here?  Or at least make ByteVector implement Clone?
-            bv.drop(0).map(|rem| DecoderResult { value: HNil, remainder: rem })
+            Ok(DecoderResult { value: HNil, remainder: bv.clone() })
         })
     }
 }
@@ -173,6 +195,32 @@ mod tests {
     #[test]
     fn a_u8_value_should_round_trip() {
         assert_round_trip_bytes(&uint8(), &7u8, &Some(byte_vector::buffered(&vec!(7u8))));
+    }
+
+    #[test]
+    fn a_constant_codec_should_round_trip() {
+        let input = byte_vector::buffered(&vec!(1u8, 2, 3, 4));
+        assert_round_trip_bytes(&constant(&input), &(), &Some(input));
+    }
+
+    #[test]
+    fn decoding_with_constant_codec_should_fail_if_the_input_vector_does_not_match_the_constant_vector() {
+        let input = byte_vector::buffered(&vec!(1u8, 2, 3, 4));
+        let codec = constant(&byte_vector::buffered(&vec!(6u8, 6, 6)));
+        match codec.decode(&input) {
+            Ok(..) => assert!(false),
+            Err(e) => assert_eq!(e.message(), "Expected constant 060606 but got 010203".to_string())
+        }
+    }
+
+    #[test]
+    fn decoding_with_constant_codec_should_fail_if_the_input_vector_is_smaller_than_the_constant_vector() {
+        let input = byte_vector::buffered(&vec!(1u8));
+        let codec = constant(&byte_vector::buffered(&vec!(6u8, 6, 6)));
+        match codec.decode(&input) {
+            Ok(..) => assert!(false),
+            Err(e) => assert_eq!(e.message(), "Requested view offset of 0 and length 3 bytes exceeds vector length of 1".to_string())
+        }
     }
 
     #[test]
