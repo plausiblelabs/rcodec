@@ -14,6 +14,7 @@ use std::vec::Vec;
 use error::Error;
 
 /// An immutable vector of bytes.
+#[derive(Clone)]
 pub struct ByteVector {
     /// The underlying storage type.
     storage: Rc<StorageType>
@@ -30,6 +31,14 @@ impl ByteVector {
         self.storage.read(buf, offset, len)
     }
 
+    /// Return a new byte vector containing exactly `len` bytes from this byte vector, or an
+    /// error if insufficient data is available.
+    pub fn take(&self, len: usize) -> Result<ByteVector, Error> {
+        ByteVector::view(&self.storage, 0, len).map(|storage| {
+            ByteVector { storage: storage }
+        })
+    }
+    
     /// Return a new byte vector containing all but the first `len` bytes of this byte vector,
     /// or an error if dropping `len` bytes would overrun the end of this byte vector.
     pub fn drop(&self, len: usize) -> Result<ByteVector, Error> {
@@ -271,6 +280,16 @@ mod tests {
     use super::*;
 
     #[test]
+    fn clone_should_work() {
+        let bytes = vec![1, 2, 3, 4];
+        let lhs = buffered(&bytes);
+        let rhs = buffered(&bytes);
+        let bv1 = append(&lhs, &rhs);
+        let bv2 = bv1.clone();
+        assert_eq!(bv1, bv2);
+    }
+    
+    #[test]
     fn length_of_empty_vector_should_be_zero() {
         assert_eq!(empty().length(), 0);
     }
@@ -350,6 +369,48 @@ mod tests {
             assert!(result.is_ok());
             assert_eq!(result.unwrap(), 2);
             assert_eq!(buf, [4, 1]);
+        }
+    }
+
+    #[test]
+    fn take_should_fail_if_length_is_invalid() {
+        let bytes = vec![1, 2, 3, 4];
+        let bv = buffered(&bytes);
+
+        assert!(bv.take(2).is_ok());
+        assert!(bv.take(4).is_ok());
+        assert!(bv.take(5).is_err());
+    }
+
+    #[test]
+    fn take_should_work_for_buffered_vector() {
+        let bytes = vec![1, 2, 3, 4];
+        let bv = buffered(&bytes);
+
+        let result = bv.take(2);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), buffered(&vec![1, 2]));
+    }
+
+    #[test]
+    fn take_should_work_for_append_vector() {
+        let bytes = vec![1, 2, 3, 4];
+        let lhs = buffered(&bytes);
+        let rhs = buffered(&bytes);
+        let bv = append(&lhs, &rhs);
+
+        // Verify case where take takes part of lhs only
+        {
+            let result = bv.take(2);
+            assert!(result.is_ok());
+            assert_eq!(result.unwrap(), buffered(&vec![1, 2]));
+        }
+
+        // Verify case where take takes from both lhs and rhs
+        {
+            let result = bv.take(6);
+            assert!(result.is_ok());
+            assert_eq!(result.unwrap(), buffered(&vec![1, 2, 3, 4, 1, 2]));
         }
     }
 
