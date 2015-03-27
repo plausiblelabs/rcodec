@@ -51,28 +51,44 @@ pub struct DecoderResult<T> {
 /// A result type returned by Decoder operations.
 pub type DecodeResult<T> = Result<DecoderResult<T>, Error>;
 
+/// A byte order specification, either big or little endian.
+#[derive(Clone)]
+pub enum ByteOrder {
+    Big,
+    Little
+}
+
 /// Generic unsigned integer codec.
-pub fn uint<T: Int + FromPrimitive>() -> Codec<T> {
+pub fn uint<T: Int + FromPrimitive>(order: ByteOrder) -> Codec<T> {
+    let encoder_order = order.clone();
+    let decoder_order = order.clone();
     Codec {
-        encoder: Box::new(|value: &T| {
+        encoder: Box::new(move |value: &T| {
             // TODO: Use direct() once it's implemented
             let size = size_of::<T>();
             let mut v = Vec::<u8>::with_capacity(size);
             for i in 0..size {
-                let shift = (size - i - 1) * 8;
+                let shift = match encoder_order {
+                    ByteOrder::Big => (size - i - 1) * 8,
+                    ByteOrder::Little => i * 8
+                };
                 let byte = (*value >> shift) & num::FromPrimitive::from_u8(0xff).unwrap();
                 v.push(num::cast(byte).unwrap());
             }
             Ok(byte_vector::buffered(&v))
         }),
-        decoder: Box::new(|bv| {
+        decoder: Box::new(move |bv| {
             let size = size_of::<T>();
             let v = &mut vec::from_elem(0u8, size);
             match bv.read(v, 0, size) {
                 Ok(..) => {
                     let mut value = T::zero();
                     for i in 0..size {
-                        value = (value << 8) | num::FromPrimitive::from_u8(v[i]).unwrap()
+                        let byte = num::FromPrimitive::from_u8(v[i]).unwrap();
+                        value = match decoder_order {
+                            ByteOrder::Big => (value << 8) | byte,
+                            ByteOrder::Little => value | (byte << (i * 8))
+                        };
                     }
                     match bv.drop(size) {
                         Ok(remainder) => Ok(DecoderResult { value: value, remainder: remainder }),
@@ -86,16 +102,25 @@ pub fn uint<T: Int + FromPrimitive>() -> Codec<T> {
 }
 
 /// Unsigned 8-bit integer codec.
-pub fn uint8() -> Codec<u8> { uint() }
+pub fn uint8() -> Codec<u8> { uint(ByteOrder::Big) }
 
-/// Unsigned 16-bit integer codec.
-pub fn uint16() -> Codec<u16> { uint() }
+/// Big-endian unsigned 16-bit integer codec.
+pub fn uint16() -> Codec<u16> { uint(ByteOrder::Big) }
 
-/// Unsigned 32-bit integer codec.
-pub fn uint32() -> Codec<u32> { uint() }
+/// Big-endian unsigned 32-bit integer codec.
+pub fn uint32() -> Codec<u32> { uint(ByteOrder::Big) }
 
-/// Unsigned 64-bit integer coder.
-pub fn uint64() -> Codec<u64> { uint() }
+/// Big-endian unsigned 64-bit integer codec.
+pub fn uint64() -> Codec<u64> { uint(ByteOrder::Big) }
+
+/// Little-endian unsigned 16-bit integer codec.
+pub fn uint16_l() -> Codec<u16> { uint(ByteOrder::Little) }
+
+/// Little-endian unsigned 32-bit integer codec.
+pub fn uint32_l() -> Codec<u32> { uint(ByteOrder::Little) }
+
+/// Little-endian unsigned 64-bit integer codec.
+pub fn uint64_l() -> Codec<u64> { uint(ByteOrder::Little) }
 
 /// Codec that encodes `len` low bytes and decodes by discarding `len` bytes.
 pub fn ignore(len: usize) -> Codec<()> {
@@ -331,16 +356,19 @@ mod tests {
     #[test]
     fn a_u16_value_should_round_trip() {
         assert_round_trip_bytes(&uint16(), &0x1234u16, &Some(byte_vector!(0x12, 0x34)));
+        assert_round_trip_bytes(&uint16_l(), &0x1234u16, &Some(byte_vector!(0x34, 0x12)));
     }
 
     #[test]
     fn a_u32_value_should_round_trip() {
         assert_round_trip_bytes(&uint32(), &0x12345678u32, &Some(byte_vector!(0x12, 0x34, 0x56, 0x78)));
+        assert_round_trip_bytes(&uint32_l(), &0x12345678u32, &Some(byte_vector!(0x78, 0x56, 0x34, 0x12)));
     }
 
     #[test]
     fn a_u64_value_should_round_trip() {
         assert_round_trip_bytes(&uint64(), &0x1234567890abcdef, &Some(byte_vector!(0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef)));
+        assert_round_trip_bytes(&uint64_l(), &0x1234567890abcdef, &Some(byte_vector!(0xef, 0xcd, 0xab, 0x90, 0x78, 0x56, 0x34, 0x12)));
     }
 
     #[test]
