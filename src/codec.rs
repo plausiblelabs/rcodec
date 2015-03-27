@@ -6,7 +6,12 @@
 // Scala scodec library: https://github.com/scodec/scodec/
 //
 
+use std::mem::size_of;
+use std::num::Int;
+use std::num::FromPrimitive;
+use std::num;
 use std::rc::Rc;
+use std::vec;
 use core;
 
 use error::Error;
@@ -45,20 +50,30 @@ pub struct DecoderResult<T> {
 /// A result type returned by Decoder operations.
 pub type DecodeResult<T> = Result<DecoderResult<T>, Error>;
 
-/// Unsigned 8-bit integer codec.
-pub fn uint8() -> Codec<u8> {
+/// Generic unsigned integer codec.
+pub fn uint<T: Int + FromPrimitive>() -> Codec<T> {
     Codec {
-        encoder: Box::new(|value| {
-            // TODO: Use direct() once it's implemented
-            Ok(byte_vector::buffered(&vec![*value]))
+        encoder: Box::new(|value: &T| {
+            let size = size_of::<T>();
+            let mut v = Vec::<u8>::with_capacity(size);
+            for i in 0..size {
+                let shift = (size - i - 1) * 8;
+                let byte = (*value >> shift) & num::FromPrimitive::from_u8(0xff).unwrap();
+                v.push(num::cast(byte).unwrap());
+            }
+            Ok(byte_vector::buffered(&v))
         }),
         decoder: Box::new(|bv| {
-            // TODO: This is a dumbed down implementation just for evaluation purposes
-            let v: &mut[u8] = &mut[0];
-            match bv.read(v, 0, 1) {
+            let size = size_of::<T>();
+            let v = &mut vec::from_elem(0u8, size);
+            match bv.read(v, 0, size) {
                 Ok(..) => {
-                    match bv.drop(1) {
-                        Ok(remainder) => Ok(DecoderResult { value: v[0], remainder: remainder }),
+                    let mut value = T::zero();
+                    for i in 0..size {
+                        value = (value << 8) | num::FromPrimitive::from_u8(v[i]).unwrap()
+                    }
+                    match bv.drop(size) {
+                        Ok(remainder) => Ok(DecoderResult { value: value, remainder: remainder }),
                         Err(e) => Err(e)
                     }
                 },
@@ -67,6 +82,12 @@ pub fn uint8() -> Codec<u8> {
         })
     }
 }
+
+/// Unsigned 8-bit integer codec.
+pub fn uint8() -> Codec<u8> { uint() }
+
+/// Unsigned 16-bit integer codec.
+pub fn uint16() -> Codec<u16> { uint() }
 
 /// Codec that encodes `len` low bytes and decodes by discarding `len` bytes.
 pub fn ignore(len: usize) -> Codec<()> {
@@ -240,6 +261,11 @@ mod tests {
     #[test]
     fn a_u8_value_should_round_trip() {
         assert_round_trip_bytes(&uint8(), &7u8, &Some(byte_vector::buffered(&vec!(7u8))));
+    }
+    
+    #[test]
+    fn a_u16_value_should_round_trip() {
+        assert_round_trip_bytes(&uint16(), &7777u16, &Some(byte_vector::buffered(&vec!(0x1eu8, 0x61u8))));
     }
 
     #[test]
