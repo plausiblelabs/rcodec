@@ -296,12 +296,6 @@ mod tests {
         }
     }
 
-    // #[test]
-    // fn the_shr_operator_should_do_its_thing() {
-    //     let codec = constant(&byte_vector::buffered(&vec!(6u8))) >> hcodec!({uint8()} :: {uint8()});
-    //     assert_round_trip_bytes(&codec, &hlist!(7u8, 3u8), &Some(byte_vector::buffered(&vec!(6u8, 7u8, 3u8))));
-    // }
-    
     #[test]
     fn an_hnil_should_round_trip() {
         assert_round_trip_bytes(&hnil_codec(), &HNil, &Some(byte_vector::empty()));
@@ -346,11 +340,14 @@ mod tests {
         let codec = hcodec!(
             { "magic"  | constant(&m) } >>
             { "first"  | uint8()      } ::
-            //{ "trash"  | ignore(1)    } >>
+            { "trash"  | ignore(1)    } >>
             { "second" | uint8()      } :: 
             { "third"  | uint8()      }
-        );
-        assert_round_trip_bytes(&codec, &hlist!(7u8, 3u8, 1u8), &Some(byte_vector::buffered(&vec!(0xCA, 0xFE, 7u8, /*0x00,*/ 3u8, 1u8))));
+            );
+        
+        let input = hlist!(7u8, 3u8, 1u8);
+        let expected = byte_vector::buffered(&vec!(0xCA, 0xFE, 0x07, 0x00, 0x03, 0x01));
+        assert_round_trip_bytes(&codec, &input, &Some(expected));
     }
 
     record_struct_with_hlist_type!(
