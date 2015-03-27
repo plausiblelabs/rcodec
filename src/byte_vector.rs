@@ -134,6 +134,9 @@ impl PartialEq for ByteVector {
     }
 }
 
+impl Eq for ByteVector {
+}
+
 const CHARS: &'static [u8] = b"0123456789abcdef";
 
 impl Debug for ByteVector {

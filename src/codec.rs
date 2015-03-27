@@ -109,6 +109,20 @@ pub fn constant(bytes: &ByteVector) -> Codec<()> {
     }
 }
 
+/// Identity byte vector codec.
+///   - Encodes by returning the given byte vector.
+///   - Decodes by taking all remaining bytes from the given byte vector.
+pub fn identity_bytes() -> Codec<ByteVector> {
+    Codec {
+        encoder: Box::new(|value: &ByteVector| {
+            Ok((*value).clone())
+        }),
+        decoder: Box::new(|bv| {
+            Ok(DecoderResult { value: (*bv).clone(), remainder: byte_vector::empty() })
+        })
+    }
+}
+
 /// Codec for HNil type.
 #[allow(unused_variables)]
 pub fn hnil_codec() -> Codec<HNil> {
@@ -297,12 +311,18 @@ mod tests {
     }
 
     #[test]
-    fn an_hnil_should_round_trip() {
+    fn an_identity_codec_should_round_trip() {
+        let input = byte_vector!(1, 2, 3, 4);
+        assert_round_trip_bytes(&identity_bytes(), &input, &Some(input.clone()));
+    }
+    
+    #[test]
+    fn an_hnil_codec_should_round_trip() {
         assert_round_trip_bytes(&hnil_codec(), &HNil, &Some(byte_vector::empty()));
     }
 
     #[test]
-    fn an_hlist_prepend_codec_should_work() {
+    fn an_hlist_prepend_codec_should_round_trip() {
         let codec1 = hlist_prepend_codec(uint8(), hnil_codec());
         assert_round_trip_bytes(&codec1, &hlist!(7u8), &Some(byte_vector!(7)));
 
