@@ -330,17 +330,17 @@ mod tests {
     
     #[test]
     fn a_u16_value_should_round_trip() {
-        assert_round_trip_bytes(&uint16(), &0x1234u16, &Some(byte_vector::buffered(&vec!(0x12, 0x34))));
+        assert_round_trip_bytes(&uint16(), &0x1234u16, &Some(byte_vector!(0x12, 0x34)));
     }
 
     #[test]
     fn a_u32_value_should_round_trip() {
-        assert_round_trip_bytes(&uint32(), &0x12345678u32, &Some(byte_vector::buffered(&vec!(0x12, 0x34, 0x56, 0x78))));
+        assert_round_trip_bytes(&uint32(), &0x12345678u32, &Some(byte_vector!(0x12, 0x34, 0x56, 0x78)));
     }
 
     #[test]
     fn a_u64_value_should_round_trip() {
-        assert_round_trip_bytes(&uint64(), &0x1234567890abcdef, &Some(byte_vector::buffered(&vec!(0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef))));
+        assert_round_trip_bytes(&uint64(), &0x1234567890abcdef, &Some(byte_vector!(0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef)));
     }
 
     #[test]
