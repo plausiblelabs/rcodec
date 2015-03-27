@@ -172,6 +172,37 @@ impl<T: 'static> core::ops::BitOr<Codec<T>> for &'static str {
     }
 }
 
+/// Override for the '>>' operator that creates a new codec that first applies the lhs codec, discarding the
+/// unit value when decoding.
+impl<T: 'static> core::ops::Shr<Codec<T>> for Codec<()> {
+    type Output = Codec<T>;
+
+    fn shr(self, rhs: Codec<T>) -> Codec<T> {
+        // XXX: Ugh
+        let lhs_encoder = Rc::new(self);
+        let lhs_decoder = lhs_encoder.clone();
+        
+        let rhs_encoder = Rc::new(rhs);
+        let rhs_decoder = rhs_encoder.clone();
+
+        // TODO: Add generic xmap function
+        Codec {
+            encoder: Box::new(move |value: &T| {
+                lhs_encoder.encode(&()).and_then(|encoded_lhs| {
+                    rhs_encoder.encode(value).map(|encoded_rhs| {
+                        byte_vector::append(&encoded_lhs, &encoded_rhs)
+                    })
+                })
+            }),
+            decoder: Box::new(move |bv| {
+                lhs_decoder.decode(bv).and_then(|decoded| {
+                    rhs_decoder.decode(&decoded.remainder)
+                })
+            })
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -188,7 +219,7 @@ mod tests {
             let compare_result = match *raw_bytes {
                 Some(ref expected) => {
                     if encoded != *expected {
-                        Err(Error::new("Encoded bytes do not match expected bytes".to_string()))
+                        Err(Error::new(format!("Encoded bytes {:?} do not match expected bytes {:?}", encoded, *expected)))
                     } else {
                         Ok(())
                     }
@@ -206,7 +237,7 @@ mod tests {
         // Verify result
         match result {
             Ok(decoded) => assert_eq!(decoded, *value),
-            Err(e) => panic!("Round-trip encoding failed: {:?}", e),
+            Err(e) => panic!("Round-trip encoding failed: {}", e.message()),
         }
     }
 
@@ -269,6 +300,12 @@ mod tests {
         }
     }
 
+    #[test]
+    fn the_shr_operator_should_do_its_thing() {
+        let codec = constant(&byte_vector::buffered(&vec!(6u8))) >> hcodec!(uint8(), uint8());
+        assert_round_trip_bytes(&codec, &hlist!(7u8, 3u8), &Some(byte_vector::buffered(&vec!(6u8, 7u8, 3u8))));
+    }
+    
     #[test]
     fn an_hnil_should_round_trip() {
         assert_round_trip_bytes(&hnil_codec(), &HNil, &Some(byte_vector::empty()));
