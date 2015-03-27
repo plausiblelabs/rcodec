@@ -68,6 +68,24 @@ pub fn uint8() -> Codec<u8> {
     }
 }
 
+/// Codec that encodes `len` low bytes and decodes by discarding `len` bytes.
+pub fn ignore(len: usize) -> Codec<()> {
+    // TODO: Is there a better way?
+    let encode_len = len.clone();
+    let decode_len = len.clone();
+    
+    Codec {
+        encoder: Box::new(move |_unit| {
+            Ok(byte_vector::fill(0, encode_len))
+        }),
+        decoder: Box::new(move |bv| {
+            bv.drop(decode_len).map(|remainder| {
+                DecoderResult { value: (), remainder: remainder }
+            })
+        })
+    }
+}
+
 /// Codec that always encodes the given byte vector, and decodes by returning a unit result if the actual bytes match
 /// the given byte vector or an error otherwise.
 pub fn constant(bytes: &ByteVector) -> Codec<()> {
@@ -195,6 +213,34 @@ mod tests {
     #[test]
     fn a_u8_value_should_round_trip() {
         assert_round_trip_bytes(&uint8(), &7u8, &Some(byte_vector::buffered(&vec!(7u8))));
+    }
+
+    #[test]
+    fn an_ignore_codec_should_round_trip() {
+        assert_round_trip_bytes(&ignore(4), &(), &Some(byte_vector::buffered(&vec!(0u8, 0, 0, 0))));
+    }
+
+    #[test]
+    fn decoding_with_ignore_codec_should_succeed_if_the_input_vector_is_long_enough() {
+        let input = byte_vector::buffered(&vec!(7u8, 1, 2, 3, 4));
+        let codec = ignore(3);
+        match codec.decode(&input) {
+            Ok(result) => {
+                let expected_remainder = byte_vector::buffered(&vec!(3u8, 4));
+                assert_eq!(expected_remainder, result.remainder);
+            },
+            Err(_) => assert!(false)
+        }
+    }
+
+    #[test]
+    fn decoding_with_ignore_codec_should_fail_if_the_input_vector_is_smaller_than_the_ignored_length() {
+        let input = byte_vector::buffered(&vec!(1u8));
+        let codec = ignore(3);
+        match codec.decode(&input) {
+            Ok(..) => assert!(false),
+            Err(e) => assert_eq!(e.message(), "Requested length of 3 bytes exceeds vector length of 1".to_string())
+        }
     }
 
     #[test]

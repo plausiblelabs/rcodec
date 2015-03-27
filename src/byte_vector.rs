@@ -283,6 +283,17 @@ pub fn append(lhs: &ByteVector, rhs: &ByteVector) -> ByteVector {
     ByteVector { storage: Rc::new(storage) }
 }
 
+/// Return a byte vector containing `value` repeated `count` times.
+pub fn fill(value: u8, count: usize) -> ByteVector {
+    // TODO: Is there a more efficient way to fill a vec?
+    let mut v: Vec<u8> = Vec::with_capacity(count);
+    for _i in 0..count {
+        v.push(value);
+    }
+    let storage = StorageType::Heap { bytes: v };
+    ByteVector { storage: Rc::new(storage) }
+}
+    
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -326,6 +337,13 @@ mod tests {
         assert_eq!(bv, expected);
     }
 
+    #[test]
+    fn fill_should_work() {
+        let bv = fill(6u8, 4);
+        let expected = buffered(&vec![6, 6, 6, 6]);
+        assert_eq!(bv, expected);
+    }
+    
     #[test]
     fn read_should_fail_if_offset_is_out_of_bounds() {
         let bytes = vec![1, 2, 3, 4];
