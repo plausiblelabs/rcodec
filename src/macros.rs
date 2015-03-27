@@ -76,38 +76,40 @@ macro_rules! hlist_pat_tail {
 /// Converts an HList of Codecs into a Codec that operates on an HList of values.
 ///
 /// For example:
-///   hcodec!(uint8(), uint8())
+///   hcodec!(
+///       { constant(c) } >>
+///       { uint8()     } ::
+///       { uint8()     }
+///   )
 ///
 /// translates to:
-///   hlist_prepend_codec(uint8(), hlist_prepend_codec(uint8(), hnil_codec()))
+///   drop_left(constant(c), hlist_prepend_codec(uint8(), hlist_prepend_codec(uint8(), hnil_codec())))
 ///
 /// which evaluates to:
 ///   Codec<HCons<u8, HCons<u8, HNil>>>
+///
+/// Note that we require braces around each element so that we have more freedom with operators.
+/// Rust macro rules state that simple exprs (without the braces) can only be followed by
+/// [ => , ; ] whereas blocks (with the braces) can be followed by any token like >> or ::.
 #[macro_export]
 macro_rules! hcodec {
     {} => {
         hnil_codec()
     };
-    { $head:expr } => {
+    { { $head:expr } } => {
         hlist_prepend_codec($head, hnil_codec())
     };
-    { $head:expr, $($tail:expr),+ } => {
-        hlist_prepend_codec($head, hcodec!($($tail),+))
+    { { $head:expr } :: $({$tail:expr})::+ } => {
+        hlist_prepend_codec($head, hcodec!($({$tail})::+))
     };
-    { $($head:expr),+ : $tail:expr } => {
-        hcodec_expr_tail!({ $tail } $($head),+)
+    { { $head:expr } :: $({$tail:expr})>>+ } => {
+        hlist_prepend_codec($head, hcodec!($({$tail})>>+))
     };
-}
-
-macro_rules! hcodec_expr_tail {
-    { { $tail:expr } } => {
-        $tail
+    { { $head:expr } >> $({$tail:expr})::+ } => {
+        drop_left($head, hcodec!($({$tail})::+))
     };
-    { { $tail:expr } $head:expr } => {
-        hlist_prepend_codec($head, $tail)
-    };
-    { { $tail:tt } $head:expr, $($rest:tt),+ } => {
-        hlist_prepend_codec($head, hcodec_expr_tail!({ $tail } $($rest),+))
+    { { $head:expr } >> $({$tail:expr})>>+ } => {
+        drop_left($head, hcodec!($({$tail})>>+))
     };
 }
 
@@ -118,7 +120,7 @@ macro_rules! hcodec_expr_tail {
 ///   }
 ///
 /// We want a codec that automatically converts HList values to Header fields, like this:
-///   let header_codec = scodec!(Header, hcodec!(uint8(), uint8()));
+///   let header_codec = scodec!(Header, hcodec!({uint8()} :: {uint8()}));
 ///
 /// which would expand to (roughly):
 ///   Codec {

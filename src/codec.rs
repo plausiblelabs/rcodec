@@ -172,34 +172,30 @@ impl<T: 'static> core::ops::BitOr<Codec<T>> for &'static str {
     }
 }
 
-/// Override for the '>>' operator that creates a new codec that first applies the lhs codec, discarding the
-/// unit value when decoding.
-impl<T: 'static> core::ops::Shr<Codec<T>> for Codec<()> {
-    type Output = Codec<T>;
+/// Returns a new codec that encodes/decodes the unit value followed by the right-hand value,
+/// discarding the unit value when decoding.
+pub fn drop_left<T: 'static>(lhs: Codec<()>, rhs: Codec<T>) -> Codec<T> {
+    // XXX: Ugh
+    let lhs_encoder = Rc::new(lhs);
+    let lhs_decoder = lhs_encoder.clone();
+    
+    let rhs_encoder = Rc::new(rhs);
+    let rhs_decoder = rhs_encoder.clone();
 
-    fn shr(self, rhs: Codec<T>) -> Codec<T> {
-        // XXX: Ugh
-        let lhs_encoder = Rc::new(self);
-        let lhs_decoder = lhs_encoder.clone();
-        
-        let rhs_encoder = Rc::new(rhs);
-        let rhs_decoder = rhs_encoder.clone();
-
-        // TODO: Add generic xmap function
-        Codec {
-            encoder: Box::new(move |value: &T| {
-                lhs_encoder.encode(&()).and_then(|encoded_lhs| {
-                    rhs_encoder.encode(value).map(|encoded_rhs| {
-                        byte_vector::append(&encoded_lhs, &encoded_rhs)
-                    })
-                })
-            }),
-            decoder: Box::new(move |bv| {
-                lhs_decoder.decode(bv).and_then(|decoded| {
-                    rhs_decoder.decode(&decoded.remainder)
+    // TODO: Add generic xmap function
+    Codec {
+        encoder: Box::new(move |value: &T| {
+            lhs_encoder.encode(&()).and_then(|encoded_lhs| {
+                rhs_encoder.encode(value).map(|encoded_rhs| {
+                    byte_vector::append(&encoded_lhs, &encoded_rhs)
                 })
             })
-        }
+        }),
+        decoder: Box::new(move |bv| {
+            lhs_decoder.decode(bv).and_then(|decoded| {
+                rhs_decoder.decode(&decoded.remainder)
+            })
+        })
     }
 }
 
@@ -300,11 +296,11 @@ mod tests {
         }
     }
 
-    #[test]
-    fn the_shr_operator_should_do_its_thing() {
-        let codec = constant(&byte_vector::buffered(&vec!(6u8))) >> hcodec!(uint8(), uint8());
-        assert_round_trip_bytes(&codec, &hlist!(7u8, 3u8), &Some(byte_vector::buffered(&vec!(6u8, 7u8, 3u8))));
-    }
+    // #[test]
+    // fn the_shr_operator_should_do_its_thing() {
+    //     let codec = constant(&byte_vector::buffered(&vec!(6u8))) >> hcodec!({uint8()} :: {uint8()});
+    //     assert_round_trip_bytes(&codec, &hlist!(7u8, 3u8), &Some(byte_vector::buffered(&vec!(6u8, 7u8, 3u8))));
+    // }
     
     #[test]
     fn an_hnil_should_round_trip() {
@@ -322,7 +318,7 @@ mod tests {
 
     #[test]
     fn an_hlist_codec_should_round_trip() {
-        let codec = hcodec!(uint8(), uint8(), uint8()); 
+        let codec = hcodec!({uint8()} :: {uint8()} :: {uint8()}); 
         assert_round_trip_bytes(&codec, &hlist!(7u8, 3u8, 1u8), &Some(byte_vector::buffered(&vec!(7u8, 3u8, 1u8))));
     }
 
@@ -346,11 +342,15 @@ mod tests {
 
     #[test]
     fn the_hcodec_macro_should_work_with_context_injected_codecs() {
+        let m = byte_vector::buffered(&vec!(0xCAu8, 0xFE));
         let codec = hcodec!(
-            ("first"  | uint8()),
-            ("second" | uint8()),
-            ("third"  | uint8()));
-        assert_round_trip_bytes(&codec, &hlist!(7u8, 3u8, 1u8), &Some(byte_vector::buffered(&vec!(7u8, 3u8, 1u8))));
+            { "magic"  | constant(&m) } >>
+            { "first"  | uint8()      } ::
+            //{ "trash"  | ignore(1)    } >>
+            { "second" | uint8()      } :: 
+            { "third"  | uint8()      }
+        );
+        assert_round_trip_bytes(&codec, &hlist!(7u8, 3u8, 1u8), &Some(byte_vector::buffered(&vec!(0xCA, 0xFE, 7u8, /*0x00,*/ 3u8, 1u8))));
     }
 
     record_struct_with_hlist_type!(
@@ -374,7 +374,7 @@ mod tests {
 
     #[test]
     fn a_struct_codec_should_round_trip() {
-        let codec = scodec!(TestStruct2, hcodec!(uint8(), uint8()));
+        let codec = scodec!(TestStruct2, hcodec!({uint8()} :: {uint8()}));
         assert_round_trip_bytes(&codec, &TestStruct2 { foo: 7u8, bar: 3u8 }, &Some(byte_vector::buffered(&vec!(7u8, 3u8))));
     }
 }
