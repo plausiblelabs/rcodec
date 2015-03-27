@@ -50,7 +50,7 @@ pub fn uint8() -> Codec<u8> {
     Codec {
         encoder: Box::new(|value| {
             // TODO: Use direct() once it's implemented
-            Ok(byte_vector::buffered(&vec![*value]))
+            Ok(byte_vector!(*value))
         }),
         decoder: Box::new(|bv| {
             // TODO: This is a dumbed down implementation just for evaluation purposes
@@ -239,21 +239,21 @@ mod tests {
 
     #[test]
     fn a_u8_value_should_round_trip() {
-        assert_round_trip_bytes(&uint8(), &7u8, &Some(byte_vector::buffered(&vec!(7u8))));
+        assert_round_trip_bytes(&uint8(), &7u8, &Some(byte_vector!(7)));
     }
 
     #[test]
     fn an_ignore_codec_should_round_trip() {
-        assert_round_trip_bytes(&ignore(4), &(), &Some(byte_vector::buffered(&vec!(0u8, 0, 0, 0))));
+        assert_round_trip_bytes(&ignore(4), &(), &Some(byte_vector!(0, 0, 0, 0)));
     }
 
     #[test]
     fn decoding_with_ignore_codec_should_succeed_if_the_input_vector_is_long_enough() {
-        let input = byte_vector::buffered(&vec!(7u8, 1, 2, 3, 4));
+        let input = byte_vector!(7, 1, 2, 3, 4);
         let codec = ignore(3);
         match codec.decode(&input) {
             Ok(result) => {
-                let expected_remainder = byte_vector::buffered(&vec!(3u8, 4));
+                let expected_remainder = byte_vector!(3, 4);
                 assert_eq!(expected_remainder, result.remainder);
             },
             Err(_) => assert!(false)
@@ -262,7 +262,7 @@ mod tests {
 
     #[test]
     fn decoding_with_ignore_codec_should_fail_if_the_input_vector_is_smaller_than_the_ignored_length() {
-        let input = byte_vector::buffered(&vec!(1u8));
+        let input = byte_vector!(1u8);
         let codec = ignore(3);
         match codec.decode(&input) {
             Ok(..) => assert!(false),
@@ -272,14 +272,14 @@ mod tests {
 
     #[test]
     fn a_constant_codec_should_round_trip() {
-        let input = byte_vector::buffered(&vec!(1u8, 2, 3, 4));
+        let input = byte_vector!(1, 2, 3, 4);
         assert_round_trip_bytes(&constant(&input), &(), &Some(input));
     }
 
     #[test]
     fn decoding_with_constant_codec_should_fail_if_the_input_vector_does_not_match_the_constant_vector() {
-        let input = byte_vector::buffered(&vec!(1u8, 2, 3, 4));
-        let codec = constant(&byte_vector::buffered(&vec!(6u8, 6, 6)));
+        let input = byte_vector!(1, 2, 3, 4);
+        let codec = constant(&byte_vector!(6, 6, 6));
         match codec.decode(&input) {
             Ok(..) => assert!(false),
             Err(e) => assert_eq!(e.message(), "Expected constant 060606 but got 010203".to_string())
@@ -288,8 +288,8 @@ mod tests {
 
     #[test]
     fn decoding_with_constant_codec_should_fail_if_the_input_vector_is_smaller_than_the_constant_vector() {
-        let input = byte_vector::buffered(&vec!(1u8));
-        let codec = constant(&byte_vector::buffered(&vec!(6u8, 6, 6)));
+        let input = byte_vector!(1);
+        let codec = constant(&byte_vector!(6, 6, 6));
         match codec.decode(&input) {
             Ok(..) => assert!(false),
             Err(e) => assert_eq!(e.message(), "Requested view offset of 0 and length 3 bytes exceeds vector length of 1".to_string())
@@ -304,16 +304,16 @@ mod tests {
     #[test]
     fn an_hlist_prepend_codec_should_work() {
         let codec1 = hlist_prepend_codec(uint8(), hnil_codec());
-        assert_round_trip_bytes(&codec1, &hlist!(7u8), &Some(byte_vector::buffered(&vec!(7u8))));
+        assert_round_trip_bytes(&codec1, &hlist!(7u8), &Some(byte_vector!(7)));
 
         let codec2 = hlist_prepend_codec(uint8(), codec1);
-        assert_round_trip_bytes(&codec2, &hlist!(7u8, 3u8), &Some(byte_vector::buffered(&vec!(7u8, 3u8))));
+        assert_round_trip_bytes(&codec2, &hlist!(7u8, 3u8), &Some(byte_vector!(7, 3)));
     }
 
     #[test]
     fn an_hlist_codec_should_round_trip() {
         let codec = hcodec!({uint8()} :: {uint8()} :: {uint8()}); 
-        assert_round_trip_bytes(&codec, &hlist!(7u8, 3u8, 1u8), &Some(byte_vector::buffered(&vec!(7u8, 3u8, 1u8))));
+        assert_round_trip_bytes(&codec, &hlist!(7u8, 3u8, 1u8), &Some(byte_vector!(7, 3, 1)));
     }
 
     #[allow(unused_parens)]
@@ -336,17 +336,17 @@ mod tests {
 
     #[test]
     fn the_hcodec_macro_should_work_with_context_injected_codecs() {
-        let m = byte_vector::buffered(&vec!(0xCAu8, 0xFE));
+        let m = byte_vector!(0xCA, 0xFE);
         let codec = hcodec!(
             { "magic"  | constant(&m) } >>
             { "first"  | uint8()      } ::
             { "trash"  | ignore(1)    } >>
             { "second" | uint8()      } :: 
             { "third"  | uint8()      }
-            );
+        );
         
         let input = hlist!(7u8, 3u8, 1u8);
-        let expected = byte_vector::buffered(&vec!(0xCA, 0xFE, 0x07, 0x00, 0x03, 0x01));
+        let expected = byte_vector!(0xCA, 0xFE, 0x07, 0x00, 0x03, 0x01);
         assert_round_trip_bytes(&codec, &input, &Some(expected));
     }
 
@@ -372,6 +372,6 @@ mod tests {
     #[test]
     fn a_struct_codec_should_round_trip() {
         let codec = scodec!(TestStruct2, hcodec!({uint8()} :: {uint8()}));
-        assert_round_trip_bytes(&codec, &TestStruct2 { foo: 7u8, bar: 3u8 }, &Some(byte_vector::buffered(&vec!(7u8, 3u8))));
+        assert_round_trip_bytes(&codec, &TestStruct2 { foo: 7u8, bar: 3u8 }, &Some(byte_vector!(7, 3)));
     }
 }

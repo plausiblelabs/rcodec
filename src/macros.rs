@@ -70,6 +70,18 @@ macro_rules! hlist_pat_tail {
 }
 
 //
+// ByteVector-related macros
+//
+
+/// Creates a new ByteVector from the given u8 values.
+#[macro_export]
+macro_rules! byte_vector {
+    { $($byte:expr),* } => {
+        $crate::byte_vector::buffered(&vec!($($byte),*))
+    };
+}
+
+//
 // Codec-related macros
 //
 

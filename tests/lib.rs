@@ -3,11 +3,11 @@
 // All rights reserved.
 //
 
+#[macro_use]
 extern crate rcodec;
 
 use std::fmt::Debug;
 use rcodec::error::Error;
-use rcodec::byte_vector;
 use rcodec::byte_vector::ByteVector;
 use rcodec::codec::*;
 
@@ -42,5 +42,5 @@ fn assert_round_trip_bytes<T: Eq + Debug>(codec: &Codec<T>, value: &T, raw_bytes
 
 #[test]
 fn a_u8_value_should_round_trip() {
-    assert_round_trip_bytes(&uint8(), &7u8, &Some(byte_vector::buffered(&vec!(7u8))));
+    assert_round_trip_bytes(&uint8(), &7u8, &Some(byte_vector!(7)));
 }
