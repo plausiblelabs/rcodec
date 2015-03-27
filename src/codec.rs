@@ -6,10 +6,10 @@
 // Scala scodec library: https://github.com/scodec/scodec/
 //
 
+use std::fmt::Display;
 use std::mem::size_of;
-use std::num::Int;
-use std::num::FromPrimitive;
 use std::num;
+use std::num::{Int, FromPrimitive, ToPrimitive};
 use std::rc::Rc;
 use std::vec;
 use core;
@@ -80,7 +80,7 @@ pub fn int<T: Int + FromPrimitive>(order: ByteOrder) -> Codec<T> {
                         let bigger: i16 = num::cast(*value).unwrap();
                         num::cast(bigger & 0xff).unwrap()
                     }
-                    _ => num::cast((*value >> shift) & num::FromPrimitive::from_u8(0xff).unwrap()).unwrap()
+                    _ => num::cast((*value >> shift) & T::from_u8(0xff).unwrap()).unwrap()
                 };
                 v.push(byte);
             }
@@ -112,7 +112,7 @@ pub fn int<T: Int + FromPrimitive>(order: ByteOrder) -> Codec<T> {
                         _ => {
                             let mut value = T::zero();
                             for i in 0..size {
-                                let byte = num::FromPrimitive::from_u8(v[i]).unwrap();
+                                let byte = T::from_u8(v[i]).unwrap();
                                 value = match decoder_order {
                                     ByteOrder::Big => (value << 8) | byte,
                                     ByteOrder::Little => value | (byte << (i * 8))
@@ -273,6 +273,47 @@ pub fn fixed_size_bytes<T: 'static>(len: usize, codec: Codec<T>) -> Codec<T> {
     }
 }
 
+/// Codec for length-delimited values.
+///   - Encodes by encoding the length (in bytes) of the value followed by the value itself.
+///   - Decodes by decoding the length and then attempting to decode the value that follows.
+pub fn variable_size_bytes<LT: 'static + Int + ToPrimitive + FromPrimitive + Display, VT: 'static>(len_codec: Codec<LT>, val_codec: Codec<VT>) -> Codec<VT> {
+    // TODO: Currently there is no Unsigned trait that we can use to restrict the length codec to unsigned types,
+    // but there is one proposed here:
+    //   https://github.com/rust-lang/rfcs/blob/master/text/0369-num-reform.md
+    // So if that ever comes to fruition, we should switch to that trait here in place of Int.
+    
+    // XXX
+    let len_encoder = Rc::new(len_codec);
+    let len_decoder = len_encoder.clone();
+    let val_encoder = Rc::new(val_codec);
+    let val_decoder = val_encoder.clone();
+
+    Codec {
+        encoder: Box::new(move |value: &VT| {
+            // Encode the value, then prepend the length of the encoded value
+            val_encoder.encode(&value).and_then(|encoded_val| {
+                // Fail if length is too long to be encoded
+                match LT::from_usize(encoded_val.length()) {
+                    Some(len) => len_encoder.encode(&len).map(|encoded_len| byte_vector::append(&encoded_len, &encoded_val)),
+                    None => Err(Error::new(format!("Length of encoded value ({} bytes) is greater than maximum value ({}) of length type", encoded_val.length(), LT::max_value())))
+                }
+            })
+        }),
+        decoder: Box::new(move |bv| {
+            // Decode the length, then decode the value
+            len_decoder.decode(&bv).and_then(|decoded_len| {
+                // TODO: Ideally we'd just use fixed_size_bytes() here, but not sure how to transfer ownership of val_decoder
+                let len = decoded_len.value.to_usize().unwrap();
+                decoded_len.remainder.take(len).and_then(|taken| {
+                    val_decoder.decode(&taken).map(|decoded| {
+                        DecoderResult { value: decoded.value, remainder: bv.drop(len).unwrap() }
+                    })
+                })
+            })
+        })
+    }
+}
+
 /// Codec for HNil type.
 pub fn hnil_codec() -> Codec<HNil> {
     Codec {
@@ -400,6 +441,10 @@ mod tests {
         }
     }
 
+    //
+    // Integral codecs
+    // 
+    
     #[test]
     fn a_u8_value_should_round_trip() {
         assert_round_trip_bytes(&uint8(), &7, &Some(byte_vector!(7)));
@@ -455,6 +500,10 @@ mod tests {
         assert_round_trip_bytes(&int64_l(), &-2, &Some(byte_vector!(0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff)));
     }
 
+    //
+    // Ignore codec
+    // 
+    
     #[test]
     fn an_ignore_codec_should_round_trip() {
         assert_round_trip_bytes(&ignore(4), &(), &Some(byte_vector!(0, 0, 0, 0)));
@@ -480,6 +529,10 @@ mod tests {
         assert_eq!(codec.decode(&input).unwrap_err().message(), "Requested length of 3 bytes exceeds vector length of 1");
     }
 
+    //
+    // Constant codec
+    // 
+
     #[test]
     fn a_constant_codec_should_round_trip() {
         let input = byte_vector!(1, 2, 3, 4);
@@ -500,11 +553,19 @@ mod tests {
         assert_eq!(codec.decode(&input).unwrap_err().message(), "Requested view offset of 0 and length 3 bytes exceeds vector length of 1");
     }
 
+    //
+    // Identity codec
+    //
+    
     #[test]
     fn an_identity_codec_should_round_trip() {
         let input = byte_vector!(1, 2, 3, 4);
         assert_round_trip_bytes(&identity_bytes(), &input, &Some(input.clone()));
     }
+
+    //
+    // Bytes codec
+    //
 
     #[test]
     fn a_byte_vector_codec_should_round_trip() {
@@ -531,6 +592,10 @@ mod tests {
         let codec = bytes(4);
         assert_eq!(codec.decode(&input).unwrap_err().message(), "Requested view offset of 0 and length 4 bytes exceeds vector length of 2");
     }
+
+    //
+    // Fixed size bytes codec
+    //
 
     #[test]
     fn a_fixed_size_bytes_codec_should_round_trip() {
@@ -570,6 +635,47 @@ mod tests {
         assert_eq!(codec.decode(&input).unwrap_err().message(), "Requested view offset of 0 and length 4 bytes exceeds vector length of 2");
     }
 
+    //
+    // Variable size bytes codec
+    //
+
+    #[test]
+    fn a_variable_size_bytes_codec_should_round_trip() {
+        let input = byte_vector!(7, 1, 2, 3, 4);
+        let codec = variable_size_bytes(uint16(), identity_bytes());
+        assert_round_trip_bytes(&codec, &input, &Some(byte_vector!(0, 5, 7, 1, 2, 3, 4)));
+    }
+
+    #[test]
+    fn encoding_with_variable_size_codec_should_fail_when_length_of_encoded_value_is_too_large() {
+        let input = byte_vector::fill(0x7, 256);
+        let codec = variable_size_bytes(uint8(), identity_bytes());
+        assert_eq!(codec.encode(&input).unwrap_err().message(), "Length of encoded value (256 bytes) is greater than maximum value (255) of length type");
+    }
+
+    //
+    // Context injection ('|' operator)
+    //
+    
+    #[allow(unused_parens)]
+    #[test]
+    fn context_should_be_pushed_when_using_the_bitor_operator() {
+        let input = byte_vector::empty();
+        let codec =
+            ("section" |
+             ("header" |
+              ("magic" | uint8())
+              )
+             );
+
+        // Verify that the error message is prefexed with the correct context
+        assert_eq!(codec.decode(&input).unwrap_err().message(), "section/header/magic: Requested read offset of 0 and length 1 bytes exceeds vector length of 0");
+    }
+
+    //
+    // HList-related codecs
+    //
+    
     #[test]
     fn an_hnil_codec_should_round_trip() {
         assert_round_trip_bytes(&hnil_codec(), &HNil, &Some(byte_vector::empty()));
@@ -590,21 +696,6 @@ mod tests {
         assert_round_trip_bytes(&codec, &hlist!(7u8, 3u8, 1u8), &Some(byte_vector!(7, 3, 1)));
     }
 
-    #[allow(unused_parens)]
-    #[test]
-    fn context_should_be_pushed_when_using_the_bitor_operator() {
-        let input = byte_vector::empty();
-        let codec =
-            ("section" |
-             ("header" |
-              ("magic" | uint8())
-              )
-             );
-
-        // Verify that the error message is prefexed with the correct context
-        assert_eq!(codec.decode(&input).unwrap_err().message(), "section/header/magic: Requested read offset of 0 and length 1 bytes exceeds vector length of 0");
-    }
-
     #[test]
     fn the_hcodec_macro_should_work_with_context_injected_codecs() {
         let m = byte_vector!(0xCA, 0xFE);
@@ -621,6 +712,10 @@ mod tests {
         assert_round_trip_bytes(&codec, &input, &Some(expected));
     }
 
+    //
+    // Struct conversion codec
+    //
+    
     record_struct_with_hlist_type!(
         TestStruct1, HCons<u8, HCons<u8, HNil>>,
         foo: u8,
