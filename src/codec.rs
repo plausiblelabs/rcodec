@@ -89,6 +89,12 @@ pub fn uint8() -> Codec<u8> { uint() }
 /// Unsigned 16-bit integer codec.
 pub fn uint16() -> Codec<u16> { uint() }
 
+/// Unsigned 32-bit integer codec.
+pub fn uint32() -> Codec<u32> { uint() }
+
+/// Unsigned 64-bit integer coder.
+pub fn uint64() -> Codec<u64> { uint() }
+
 /// Codec that encodes `len` low bytes and decodes by discarding `len` bytes.
 pub fn ignore(len: usize) -> Codec<()> {
     // TODO: Is there a better way?
@@ -265,7 +271,17 @@ mod tests {
     
     #[test]
     fn a_u16_value_should_round_trip() {
-        assert_round_trip_bytes(&uint16(), &7777u16, &Some(byte_vector::buffered(&vec!(0x1eu8, 0x61u8))));
+        assert_round_trip_bytes(&uint16(), &0x1234u16, &Some(byte_vector::buffered(&vec!(0x12, 0x34))));
+    }
+
+    #[test]
+    fn a_u32_value_should_round_trip() {
+        assert_round_trip_bytes(&uint32(), &0x12345678u32, &Some(byte_vector::buffered(&vec!(0x12, 0x34, 0x56, 0x78))));
+    }
+
+    #[test]
+    fn a_u64_value_should_round_trip() {
+        assert_round_trip_bytes(&uint64(), &0x1234567890abcdef, &Some(byte_vector::buffered(&vec!(0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef))));
     }
 
     #[test]
