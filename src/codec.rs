@@ -139,7 +139,7 @@ pub fn bytes(len: usize) -> Codec<ByteVector> {
 ///
 /// When decoding, the given `codec` is only given `len` bytes.  If `codec` does
 /// not consume all `len` bytes, any remaining bytes are discarded.
-fn fixed_size_bytes<T: 'static>(len: usize, codec: Codec<T>) -> Codec<T> {
+pub fn fixed_size_bytes<T: 'static>(len: usize, codec: Codec<T>) -> Codec<T> {
     // XXX: Ugh
     let encoder = Rc::new(codec);
     let decoder = encoder.clone();
@@ -150,7 +150,7 @@ fn fixed_size_bytes<T: 'static>(len: usize, codec: Codec<T>) -> Codec<T> {
         encoder: Box::new(move |value| {
             encoder.encode(value).and_then(|encoded| {
                 if encoded.length() > encoder_len {
-                    Err(Error::new(format!("Encoding requires {} bytes but codec is limited to fixed length of {} bytes", encoded.length(), encoder_len)))
+                    Err(Error::new(format!("Encoding requires {} bytes but codec is limited to fixed length of {}", encoded.length(), encoder_len)))
                 } else {
                     encoded.pad_right(encoder_len)
                 }
@@ -376,7 +376,45 @@ mod tests {
         let codec = bytes(4);
         assert_eq!(codec.decode(&input).unwrap_err().message(), "Requested view offset of 0 and length 4 bytes exceeds vector length of 2");
     }
+
+    #[test]
+    fn a_fixed_size_bytes_codec_should_round_trip() {
+        let codec = fixed_size_bytes(1, uint8());
+        assert_round_trip_bytes(&codec, &7u8, &Some(byte_vector!(7)));
+    }
+
+    #[test]
+    fn encoding_with_fixed_size_codec_should_pad_with_zeros_when_value_is_smaller_than_given_length() {
+        let codec = fixed_size_bytes(3, uint8());
+        assert_round_trip_bytes(&codec, &7u8, &Some(byte_vector!(7, 0, 0)));
+    }
+
+    #[test]
+    fn encoding_with_fixed_size_codec_should_fail_when_value_needs_more_space_than_given_length() {
+        let codec = fixed_size_bytes(1, constant(&byte_vector!(6, 6, 6)));
+        assert_eq!(codec.encode(&()).unwrap_err().message(), "Encoding requires 3 bytes but codec is limited to fixed length of 1");
+    }
+
+    #[test]
+    fn decoding_with_fixed_size_codec_should_return_remainder_that_had_len_bytes_dropped() {
+        let input = byte_vector!(7, 1, 2, 3, 4);
+        let codec = fixed_size_bytes(3, uint8());
+        match codec.decode(&input) {
+            Ok(result) => {
+                assert_eq!(result.value, 7u8);
+                assert_eq!(result.remainder, byte_vector!(3, 4));
+            },
+            Err(e) => panic!("Decoding failed: {}", e.message())
+        }
+    }
     
+    #[test]
+    fn decoding_with_fixed_size_codec_should_fail_when_vector_has_less_space_than_given_length() {
+        let input = byte_vector!(1, 2);
+        let codec = fixed_size_bytes(4, bytes(6));
+        assert_eq!(codec.decode(&input).unwrap_err().message(), "Requested view offset of 0 and length 4 bytes exceeds vector length of 2");
+    }
+
     #[test]
     fn an_hnil_codec_should_round_trip() {
         assert_round_trip_bytes(&hnil_codec(), &HNil, &Some(byte_vector::empty()));
