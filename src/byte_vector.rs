@@ -52,6 +52,32 @@ impl ByteVector {
         })
     }
 
+    /// Return a new vector of length `len` containing zero or more low bytes followed by this byte vector's contents.
+    /// If this vector is longer than `len` bytes, an error will be returned.
+    pub fn pad_left(&self, len: usize) -> Result<ByteVector, Error> {
+        let storage_len = self.length();
+        if len < storage_len {
+            Err(Error::new(format!("Requested padded length of {len} bytes is smaller than vector length of {vlen}", len = len, vlen = storage_len)))
+        } else if len == storage_len {
+            Ok((*self).clone())
+        } else {
+            Ok(append(&fill(0, len - storage_len), self))
+        }
+    }
+
+    /// Return a new vector of length `len` containing this byte vector's contents followed by zero or more low bytes.
+    /// If this vector is longer than `len` bytes, an error will be returned.
+    pub fn pad_right(&self, len: usize) -> Result<ByteVector, Error> {
+        let storage_len = self.length();
+        if len < storage_len {
+            Err(Error::new(format!("Requested padded length of {len} bytes is smaller than vector length of {vlen}", len = len, vlen = storage_len)))
+        } else if len == storage_len {
+            Ok((*self).clone())
+        } else {
+            Ok(append(self, &fill(0, len - storage_len)))
+        }
+    }
+    
     /// Return a projection at `offset` with `len` bytes within the given storage.
     fn view(storage: &Rc<StorageType>, offset: usize, len: usize) -> Result<Rc<StorageType>, Error> {
         // Verify that offset is within our storage bounds
@@ -132,6 +158,9 @@ impl PartialEq for ByteVector {
 
         true
     }
+}
+
+impl Eq for ByteVector {
 }
 
 const CHARS: &'static [u8] = b"0123456789abcdef";
@@ -279,18 +308,21 @@ pub fn buffered(bytes: &Vec<u8>) -> ByteVector {
 
 /// Return a byte vector that contains the contents of lhs followed by the contents of rhs.
 pub fn append(lhs: &ByteVector, rhs: &ByteVector) -> ByteVector {
-    let storage = StorageType::Append { lhs: lhs.storage.clone(), rhs: rhs.storage.clone(), len: lhs.storage.length() + rhs.storage.length() };
-    ByteVector { storage: Rc::new(storage) }
+    if lhs.length() == 0 && rhs.length() == 0 {
+        empty()
+    } else if lhs.length() == 0 {
+        ByteVector { storage: rhs.storage.clone() }
+    } else if rhs.length() == 0 {
+        ByteVector { storage: lhs.storage.clone() }
+    } else {
+        let storage = StorageType::Append { lhs: lhs.storage.clone(), rhs: rhs.storage.clone(), len: lhs.storage.length() + rhs.storage.length() };
+        ByteVector { storage: Rc::new(storage) }
+    }
 }
 
 /// Return a byte vector containing `value` repeated `count` times.
 pub fn fill(value: u8, count: usize) -> ByteVector {
-    // TODO: Is there a more efficient way to fill a vec?
-    let mut v: Vec<u8> = Vec::with_capacity(count);
-    for _i in 0..count {
-        v.push(value);
-    }
-    let storage = StorageType::Heap { bytes: v };
+    let storage = StorageType::Heap { bytes: vec![value; count] };
     ByteVector { storage: Rc::new(storage) }
 }
     
@@ -299,8 +331,15 @@ mod tests {
     use super::*;
 
     #[test]
+    fn byte_vector_macro_should_work() {
+        let bv1 = buffered(&vec!(1, 2, 3, 4));
+        let bv2 = byte_vector!(1, 2, 3, 4);
+        assert_eq!(bv1, bv2);
+    }
+    
+    #[test]
     fn clone_should_work() {
-        let bytes = vec![1, 2, 3, 4];
+        let bytes = vec!(1, 2, 3, 4);
         let lhs = buffered(&bytes);
         let rhs = buffered(&bytes);
         let bv1 = append(&lhs, &rhs);
@@ -310,7 +349,7 @@ mod tests {
 
     #[test]
     fn debug_string_should_be_formatted_correctly() {
-        assert_eq!("01020eff", format!("{:?}", buffered(&vec![1u8, 2, 14, 255])))
+        assert_eq!("01020eff", format!("{:?}", byte_vector!(1, 2, 14, 255)))
     }
     
     #[test]
@@ -320,34 +359,32 @@ mod tests {
 
     #[test]
     fn length_of_buffered_vector_should_be_correct() {
-        let bytes = vec![1, 2, 3, 4];
-        assert_eq!(buffered(&bytes).length(), 4);
+        assert_eq!(byte_vector!(1, 2, 3, 4).length(), 4);
     }
 
     #[test]
     fn append_should_work() {
-        let bytes = vec![1, 2, 3, 4];
+        let bytes = vec!(1, 2, 3, 4);
         let lhs = buffered(&bytes);
         let rhs = buffered(&bytes);
 
         let bv = append(&lhs, &rhs);
         assert_eq!(bv.length(), 8);
 
-        let expected = buffered(&vec![1, 2, 3, 4, 1, 2, 3, 4]);
+        let expected = byte_vector!(1, 2, 3, 4, 1, 2, 3, 4);
         assert_eq!(bv, expected);
     }
 
     #[test]
     fn fill_should_work() {
         let bv = fill(6u8, 4);
-        let expected = buffered(&vec![6, 6, 6, 6]);
+        let expected = byte_vector!(6, 6, 6, 6);
         assert_eq!(bv, expected);
     }
     
     #[test]
     fn read_should_fail_if_offset_is_out_of_bounds() {
-        let bytes = vec![1, 2, 3, 4];
-        let bv = buffered(&bytes);
+        let bv = byte_vector!(1, 2, 3, 4);
 
         let buf: &mut[u8] = &mut[0, 0];
         assert!(bv.read(buf, 0, 2).is_ok());
@@ -359,8 +396,7 @@ mod tests {
 
     #[test]
     fn read_should_work_for_buffered_vector() {
-        let bytes = vec![1, 2, 3, 4];
-        let bv = buffered(&bytes);
+        let bv = byte_vector!(1, 2, 3, 4);
 
         let buf: &mut[u8] = &mut[0, 0];
         let result = bv.read(buf, 1, 2);
@@ -371,7 +407,7 @@ mod tests {
 
     #[test]
     fn read_should_work_for_append_vector() {
-        let bytes = vec![1, 2, 3, 4];
+        let bytes = vec!(1, 2, 3, 4);
         let lhs = buffered(&bytes);
         let rhs = buffered(&bytes);
         let bv = append(&lhs, &rhs);
@@ -405,8 +441,7 @@ mod tests {
 
     #[test]
     fn take_should_fail_if_length_is_invalid() {
-        let bytes = vec![1, 2, 3, 4];
-        let bv = buffered(&bytes);
+        let bv = byte_vector!(1, 2, 3, 4);
 
         assert!(bv.take(2).is_ok());
         assert!(bv.take(4).is_ok());
@@ -415,17 +450,16 @@ mod tests {
 
     #[test]
     fn take_should_work_for_buffered_vector() {
-        let bytes = vec![1, 2, 3, 4];
-        let bv = buffered(&bytes);
+        let bv = byte_vector!(1, 2, 3, 4);
 
         let result = bv.take(2);
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), buffered(&vec![1, 2]));
+        assert_eq!(result.unwrap(), byte_vector!(1, 2));
     }
 
     #[test]
     fn take_should_work_for_append_vector() {
-        let bytes = vec![1, 2, 3, 4];
+        let bytes = vec!(1, 2, 3, 4);
         let lhs = buffered(&bytes);
         let rhs = buffered(&bytes);
         let bv = append(&lhs, &rhs);
@@ -434,21 +468,20 @@ mod tests {
         {
             let result = bv.take(2);
             assert!(result.is_ok());
-            assert_eq!(result.unwrap(), buffered(&vec![1, 2]));
+            assert_eq!(result.unwrap(), byte_vector!(1, 2));
         }
 
         // Verify case where take takes from both lhs and rhs
         {
             let result = bv.take(6);
             assert!(result.is_ok());
-            assert_eq!(result.unwrap(), buffered(&vec![1, 2, 3, 4, 1, 2]));
+            assert_eq!(result.unwrap(), byte_vector!(1, 2, 3, 4, 1, 2));
         }
     }
 
     #[test]
     fn drop_should_fail_if_length_is_invalid() {
-        let bytes = vec![1, 2, 3, 4];
-        let bv = buffered(&bytes);
+        let bv = byte_vector!(1, 2, 3, 4);
 
         assert!(bv.drop(2).is_ok());
         assert!(bv.drop(4).is_ok());
@@ -457,17 +490,16 @@ mod tests {
 
     #[test]
     fn drop_should_work_for_buffered_vector() {
-        let bytes = vec![1, 2, 3, 4];
-        let bv = buffered(&bytes);
+        let bv = byte_vector!(1, 2, 3, 4);
 
         let result = bv.drop(2);
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), buffered(&vec![3, 4]));
+        assert_eq!(result.unwrap(), byte_vector!(3, 4));
     }
 
     #[test]
     fn drop_should_work_for_append_vector() {
-        let bytes = vec![1, 2, 3, 4];
+        let bytes = vec!(1, 2, 3, 4);
         let lhs = buffered(&bytes);
         let rhs = buffered(&bytes);
         let bv = append(&lhs, &rhs);
@@ -476,14 +508,42 @@ mod tests {
         {
             let result = bv.drop(2);
             assert!(result.is_ok());
-            assert_eq!(result.unwrap(), buffered(&vec![3, 4, 1, 2, 3, 4]));
+            assert_eq!(result.unwrap(), byte_vector!(3, 4, 1, 2, 3, 4));
         }
 
         // Verify case where drop takes from both lhs and rhs
         {
             let result = bv.drop(6);
             assert!(result.is_ok());
-            assert_eq!(result.unwrap(), buffered(&vec![3, 4]));
+            assert_eq!(result.unwrap(), byte_vector!(3, 4));
         }
+    }
+
+    #[test]
+    fn pad_left_should_work() {
+        let bv = byte_vector!(1, 2, 3, 4);
+        assert_eq!(bv.pad_left(4).unwrap(), byte_vector!(1, 2, 3, 4));
+        assert_eq!(bv.pad_left(5).unwrap(), byte_vector!(0, 1, 2, 3, 4));
+        assert_eq!(bv.pad_left(6).unwrap(), byte_vector!(0, 0, 1, 2, 3, 4));
+    }
+
+    #[test]
+    fn pad_left_should_fail_if_length_is_invalid() {
+        let bv = byte_vector!(1, 2, 3, 4);
+        assert_eq!(bv.pad_left(3).unwrap_err().message(), "Requested padded length of 3 bytes is smaller than vector length of 4");
+    }
+
+    #[test]
+    fn pad_right_should_work() {
+        let bv = byte_vector!(1, 2, 3, 4);
+        assert_eq!(bv.pad_right(4).unwrap(), byte_vector!(1, 2, 3, 4));
+        assert_eq!(bv.pad_right(5).unwrap(), byte_vector!(1, 2, 3, 4, 0));
+        assert_eq!(bv.pad_right(6).unwrap(), byte_vector!(1, 2, 3, 4, 0, 0));
+    }
+
+    #[test]
+    fn pad_right_should_fail_if_length_is_invalid() {
+        let bv = byte_vector!(1, 2, 3, 4);
+        assert_eq!(bv.pad_right(3).unwrap_err().message(), "Requested padded length of 3 bytes is smaller than vector length of 4");
     }
 }

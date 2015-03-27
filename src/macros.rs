@@ -70,6 +70,18 @@ macro_rules! hlist_pat_tail {
 }
 
 //
+// ByteVector-related macros
+//
+
+/// Creates a new ByteVector from the given u8 values.
+#[macro_export]
+macro_rules! byte_vector {
+    { $($byte:expr),* } => {
+        $crate::byte_vector::buffered(&vec!($($byte),*))
+    };
+}
+
+//
 // Codec-related macros
 //
 
@@ -96,20 +108,14 @@ macro_rules! hcodec {
     {} => {
         hnil_codec()
     };
-    { { $head:expr } } => {
+    { $head:block } => {
         hlist_prepend_codec($head, hnil_codec())
     };
-    { { $head:expr } :: $({$tail:expr})::+ } => {
-        hlist_prepend_codec($head, hcodec!($({$tail})::+))
+    { $head:block :: $($tail:tt)+ } => {
+        hlist_prepend_codec($head, hcodec!($($tail)+))
     };
-    { { $head:expr } :: $({$tail:expr})>>+ } => {
-        hlist_prepend_codec($head, hcodec!($({$tail})>>+))
-    };
-    { { $head:expr } >> $({$tail:expr})::+ } => {
-        drop_left($head, hcodec!($({$tail})::+))
-    };
-    { { $head:expr } >> $({$tail:expr})>>+ } => {
-        drop_left($head, hcodec!($({$tail})>>+))
+    { $head:block >> $($tail:tt)+ } => {
+        drop_left($head, hcodec!($($tail)+))
     };
 }
 
