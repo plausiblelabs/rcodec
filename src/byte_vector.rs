@@ -52,6 +52,32 @@ impl ByteVector {
         })
     }
 
+    /// Return a new vector of length `len` containing zero or more low bytes followed by this byte vector's contents.
+    /// If this vector is longer than `len` bytes, an error will be returned.
+    pub fn pad_left(&self, len: usize) -> Result<ByteVector, Error> {
+        let storage_len = self.length();
+        if len < storage_len {
+            Err(Error::new(format!("Requested padded length of {len} bytes is smaller than vector length of {vlen}", len = len, vlen = storage_len)))
+        } else if len == storage_len {
+            Ok((*self).clone())
+        } else {
+            Ok(append(&fill(0, len - storage_len), self))
+        }
+    }
+
+    /// Return a new vector of length `len` containing this byte vector's contents followed by zero or more low bytes.
+    /// If this vector is longer than `len` bytes, an error will be returned.
+    pub fn pad_right(&self, len: usize) -> Result<ByteVector, Error> {
+        let storage_len = self.length();
+        if len < storage_len {
+            Err(Error::new(format!("Requested padded length of {len} bytes is smaller than vector length of {vlen}", len = len, vlen = storage_len)))
+        } else if len == storage_len {
+            Ok((*self).clone())
+        } else {
+            Ok(append(self, &fill(0, len - storage_len)))
+        }
+    }
+    
     /// Return a projection at `offset` with `len` bytes within the given storage.
     fn view(storage: &Rc<StorageType>, offset: usize, len: usize) -> Result<Rc<StorageType>, Error> {
         // Verify that offset is within our storage bounds
@@ -282,18 +308,21 @@ pub fn buffered(bytes: &Vec<u8>) -> ByteVector {
 
 /// Return a byte vector that contains the contents of lhs followed by the contents of rhs.
 pub fn append(lhs: &ByteVector, rhs: &ByteVector) -> ByteVector {
-    let storage = StorageType::Append { lhs: lhs.storage.clone(), rhs: rhs.storage.clone(), len: lhs.storage.length() + rhs.storage.length() };
-    ByteVector { storage: Rc::new(storage) }
+    if lhs.length() == 0 && rhs.length() == 0 {
+        empty()
+    } else if lhs.length() == 0 {
+        ByteVector { storage: rhs.storage.clone() }
+    } else if rhs.length() == 0 {
+        ByteVector { storage: lhs.storage.clone() }
+    } else {
+        let storage = StorageType::Append { lhs: lhs.storage.clone(), rhs: rhs.storage.clone(), len: lhs.storage.length() + rhs.storage.length() };
+        ByteVector { storage: Rc::new(storage) }
+    }
 }
 
 /// Return a byte vector containing `value` repeated `count` times.
 pub fn fill(value: u8, count: usize) -> ByteVector {
-    // TODO: Is there a more efficient way to fill a vec?
-    let mut v: Vec<u8> = Vec::with_capacity(count);
-    for _i in 0..count {
-        v.push(value);
-    }
-    let storage = StorageType::Heap { bytes: v };
+    let storage = StorageType::Heap { bytes: vec![value; count] };
     ByteVector { storage: Rc::new(storage) }
 }
     
@@ -488,5 +517,33 @@ mod tests {
             assert!(result.is_ok());
             assert_eq!(result.unwrap(), byte_vector!(3, 4));
         }
+    }
+
+    #[test]
+    fn pad_left_should_work() {
+        let bv = byte_vector!(1, 2, 3, 4);
+        assert_eq!(bv.pad_left(4).unwrap(), byte_vector!(1, 2, 3, 4));
+        assert_eq!(bv.pad_left(5).unwrap(), byte_vector!(0, 1, 2, 3, 4));
+        assert_eq!(bv.pad_left(6).unwrap(), byte_vector!(0, 0, 1, 2, 3, 4));
+    }
+
+    #[test]
+    fn pad_left_should_fail_if_length_is_invalid() {
+        let bv = byte_vector!(1, 2, 3, 4);
+        assert_eq!(bv.pad_left(3).unwrap_err().message(), "Requested padded length of 3 bytes is smaller than vector length of 4");
+    }
+
+    #[test]
+    fn pad_right_should_work() {
+        let bv = byte_vector!(1, 2, 3, 4);
+        assert_eq!(bv.pad_right(4).unwrap(), byte_vector!(1, 2, 3, 4));
+        assert_eq!(bv.pad_right(5).unwrap(), byte_vector!(1, 2, 3, 4, 0));
+        assert_eq!(bv.pad_right(6).unwrap(), byte_vector!(1, 2, 3, 4, 0, 0));
+    }
+
+    #[test]
+    fn pad_right_should_fail_if_length_is_invalid() {
+        let bv = byte_vector!(1, 2, 3, 4);
+        assert_eq!(bv.pad_right(3).unwrap_err().message(), "Requested padded length of 3 bytes is smaller than vector length of 4");
     }
 }
