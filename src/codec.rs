@@ -59,7 +59,7 @@ pub enum ByteOrder {
 }
 
 /// Generic unsigned integer codec.
-pub fn uint<T: Int + FromPrimitive>(order: ByteOrder) -> Codec<T> {
+pub fn int<T: Int + FromPrimitive>(order: ByteOrder) -> Codec<T> {
     let encoder_order = order.clone();
     let decoder_order = order.clone();
     Codec {
@@ -72,8 +72,17 @@ pub fn uint<T: Int + FromPrimitive>(order: ByteOrder) -> Codec<T> {
                     ByteOrder::Big => (size - i - 1) * 8,
                     ByteOrder::Little => i * 8
                 };
-                let byte = (*value >> shift) & num::FromPrimitive::from_u8(0xff).unwrap();
-                v.push(num::cast(byte).unwrap());
+                let byte: u8 = match size {
+                    1 => {
+                        // i8 requires special handling since it can't represent 0xff.
+                        // We do the same calculations, but using i16 to avoid overflow.
+                        // This same code path also works for u8, so we can just check the size.
+                        let bigger: i16 = num::cast(*value).unwrap();
+                        num::cast(bigger & 0xff).unwrap()
+                    }
+                    _ => num::cast((*value >> shift) & num::FromPrimitive::from_u8(0xff).unwrap()).unwrap()
+                };
+                v.push(byte);
             }
             Ok(byte_vector::buffered(&v))
         }),
@@ -82,14 +91,36 @@ pub fn uint<T: Int + FromPrimitive>(order: ByteOrder) -> Codec<T> {
             let v = &mut vec::from_elem(0u8, size);
             match bv.read(v, 0, size) {
                 Ok(..) => {
-                    let mut value = T::zero();
-                    for i in 0..size {
-                        let byte = num::FromPrimitive::from_u8(v[i]).unwrap();
-                        value = match decoder_order {
-                            ByteOrder::Big => (value << 8) | byte,
-                            ByteOrder::Little => value | (byte << (i * 8))
-                        };
-                    }
+                    let value = match size {
+                        1 => {
+                            // i8 requires special handling since it can't hold values >= 128.
+                            // We convert the byte value to an i16 and then work with it to
+                            // get around that limitation. Interpretation as two's complement
+                            // is done manually by subtracting if the type is signed and
+                            // the unsigned byte value is in the upper (negative) half of
+                            // the range.
+                            let mut value: i16 = num::cast(v[0]).unwrap();
+                            let tmax: i16 = num::cast(T::max_value()).unwrap();
+                            if value > tmax {
+                                // This condition is only true if T is i8 and the value
+                                // is negative. Convert from the serialized unsigned byte
+                                // to the deserialized signed integer by subtracting 2^8.
+                                value -= 256;
+                            }
+                            num::cast(value).unwrap()
+                        }
+                        _ => {
+                            let mut value = T::zero();
+                            for i in 0..size {
+                                let byte = num::FromPrimitive::from_u8(v[i]).unwrap();
+                                value = match decoder_order {
+                                    ByteOrder::Big => (value << 8) | byte,
+                                    ByteOrder::Little => value | (byte << (i * 8))
+                                };
+                            }
+                            value
+                        }
+                    };
                     match bv.drop(size) {
                         Ok(remainder) => Ok(DecoderResult { value: value, remainder: remainder }),
                         Err(e) => Err(e)
@@ -102,25 +133,46 @@ pub fn uint<T: Int + FromPrimitive>(order: ByteOrder) -> Codec<T> {
 }
 
 /// Unsigned 8-bit integer codec.
-pub fn uint8() -> Codec<u8> { uint(ByteOrder::Big) }
+pub fn uint8() -> Codec<u8> { int(ByteOrder::Big) }
+
+/// Signed 8-bit integer codec.
+pub fn int8() -> Codec<i8> { int(ByteOrder::Big) }
 
 /// Big-endian unsigned 16-bit integer codec.
-pub fn uint16() -> Codec<u16> { uint(ByteOrder::Big) }
+pub fn uint16() -> Codec<u16> { int(ByteOrder::Big) }
+
+/// Big-endian signed 16-bit integer codec.
+pub fn int16() -> Codec<i16> { int(ByteOrder::Big) }
 
 /// Big-endian unsigned 32-bit integer codec.
-pub fn uint32() -> Codec<u32> { uint(ByteOrder::Big) }
+pub fn uint32() -> Codec<u32> { int(ByteOrder::Big) }
+
+/// Big-endian signed 32-bit integer codec.
+pub fn int32() -> Codec<i32> { int(ByteOrder::Big) }
 
 /// Big-endian unsigned 64-bit integer codec.
-pub fn uint64() -> Codec<u64> { uint(ByteOrder::Big) }
+pub fn uint64() -> Codec<u64> { int(ByteOrder::Big) }
+
+/// Big-endian signed 64-bit integer codec.
+pub fn int64() -> Codec<i64> { int(ByteOrder::Big) }
 
 /// Little-endian unsigned 16-bit integer codec.
-pub fn uint16_l() -> Codec<u16> { uint(ByteOrder::Little) }
+pub fn uint16_l() -> Codec<u16> { int(ByteOrder::Little) }
+
+/// Little-endian signed 16-bit integer codec.
+pub fn int16_l() -> Codec<i16> { int(ByteOrder::Little) }
 
 /// Little-endian unsigned 32-bit integer codec.
-pub fn uint32_l() -> Codec<u32> { uint(ByteOrder::Little) }
+pub fn uint32_l() -> Codec<u32> { int(ByteOrder::Little) }
+
+/// Little-endian signed 32-bit integer codec.
+pub fn int32_l() -> Codec<i32> { int(ByteOrder::Little) }
 
 /// Little-endian unsigned 64-bit integer codec.
-pub fn uint64_l() -> Codec<u64> { uint(ByteOrder::Little) }
+pub fn uint64_l() -> Codec<u64> { int(ByteOrder::Little) }
+
+/// Little-endian signed 64-bit integer codec.
+pub fn int64_l() -> Codec<i64> { int(ByteOrder::Little) }
 
 /// Codec that encodes `len` low bytes and decodes by discarding `len` bytes.
 pub fn ignore(len: usize) -> Codec<()> {
@@ -350,25 +402,57 @@ mod tests {
 
     #[test]
     fn a_u8_value_should_round_trip() {
-        assert_round_trip_bytes(&uint8(), &7u8, &Some(byte_vector!(7)));
+        assert_round_trip_bytes(&uint8(), &7, &Some(byte_vector!(7)));
+    }
+    
+    #[test]
+    fn an_i8_value_should_round_trip() {
+        assert_round_trip_bytes(&int8(), &7, &Some(byte_vector!(7)));
+        assert_round_trip_bytes(&int8(), &-2, &Some(byte_vector!(0xfe)));
+        assert_round_trip_bytes(&int8(), &-16, &Some(byte_vector!(0xf0)));
+        assert_round_trip_bytes(&int8(), &-128, &Some(byte_vector!(0x80)));
     }
     
     #[test]
     fn a_u16_value_should_round_trip() {
-        assert_round_trip_bytes(&uint16(), &0x1234u16, &Some(byte_vector!(0x12, 0x34)));
-        assert_round_trip_bytes(&uint16_l(), &0x1234u16, &Some(byte_vector!(0x34, 0x12)));
+        assert_round_trip_bytes(&uint16(), &0x1234, &Some(byte_vector!(0x12, 0x34)));
+        assert_round_trip_bytes(&uint16_l(), &0x1234, &Some(byte_vector!(0x34, 0x12)));
+    }
+
+    #[test]
+    fn an_i16_value_should_round_trip() {
+        assert_round_trip_bytes(&int16(), &0x1234, &Some(byte_vector!(0x12, 0x34)));
+        assert_round_trip_bytes(&int16(), &-2, &Some(byte_vector!(0xff, 0xfe)));
+        assert_round_trip_bytes(&int16_l(), &0x1234, &Some(byte_vector!(0x34, 0x12)));
+        assert_round_trip_bytes(&int16_l(), &-2, &Some(byte_vector!(0xfe, 0xff)));
     }
 
     #[test]
     fn a_u32_value_should_round_trip() {
-        assert_round_trip_bytes(&uint32(), &0x12345678u32, &Some(byte_vector!(0x12, 0x34, 0x56, 0x78)));
-        assert_round_trip_bytes(&uint32_l(), &0x12345678u32, &Some(byte_vector!(0x78, 0x56, 0x34, 0x12)));
+        assert_round_trip_bytes(&uint32(), &0x12345678, &Some(byte_vector!(0x12, 0x34, 0x56, 0x78)));
+        assert_round_trip_bytes(&uint32_l(), &0x12345678, &Some(byte_vector!(0x78, 0x56, 0x34, 0x12)));
+    }
+
+    #[test]
+    fn an_i32_value_should_round_trip() {
+        assert_round_trip_bytes(&uint32(), &0x12345678, &Some(byte_vector!(0x12, 0x34, 0x56, 0x78)));
+        assert_round_trip_bytes(&uint32(), &-2, &Some(byte_vector!(0xff, 0xff, 0xff, 0xfe)));
+        assert_round_trip_bytes(&uint32_l(), &0x12345678, &Some(byte_vector!(0x78, 0x56, 0x34, 0x12)));
+        assert_round_trip_bytes(&uint32_l(), &-2, &Some(byte_vector!(0xfe, 0xff, 0xff, 0xff)));
     }
 
     #[test]
     fn a_u64_value_should_round_trip() {
         assert_round_trip_bytes(&uint64(), &0x1234567890abcdef, &Some(byte_vector!(0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef)));
         assert_round_trip_bytes(&uint64_l(), &0x1234567890abcdef, &Some(byte_vector!(0xef, 0xcd, 0xab, 0x90, 0x78, 0x56, 0x34, 0x12)));
+    }
+
+    #[test]
+    fn an_i64_value_should_round_trip() {
+        assert_round_trip_bytes(&int64(), &0x1234567890abcdef, &Some(byte_vector!(0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef)));
+        assert_round_trip_bytes(&int64(), &-2, &Some(byte_vector!(0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe)));
+        assert_round_trip_bytes(&int64_l(), &0x1234567890abcdef, &Some(byte_vector!(0xef, 0xcd, 0xab, 0x90, 0x78, 0x56, 0x34, 0x12)));
+        assert_round_trip_bytes(&int64_l(), &-2, &Some(byte_vector!(0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff)));
     }
 
     #[test]
