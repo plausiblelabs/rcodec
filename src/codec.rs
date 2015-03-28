@@ -259,46 +259,43 @@ impl<'a, T> Codec<T> for FixedSizeCodec<'a, T> {
     }
 }
 
-// /// Codec for length-delimited values.
-// ///   - Encodes by encoding the length (in bytes) of the value followed by the value itself.
-// ///   - Decodes by decoding the length and then attempting to decode the value that follows.
-// pub fn variable_size_bytes<LT: 'static + Int + ToPrimitive + FromPrimitive + Display, VT: 'static>(len_codec: Codec<LT>, val_codec: Codec<VT>) -> Codec<VT> {
-//     // TODO: Currently there is no Unsigned trait that we can use to restrict the length codec to unsigned types,
-//     // but there is one proposed here:
-//     //   https://github.com/rust-lang/rfcs/blob/master/text/0369-num-reform.md
-//     // So if that ever comes to fruition, we should switch to that trait here in place of Int.
+/// Codec for length-delimited values.
+///   - Encodes by encoding the length (in bytes) of the value followed by the value itself.
+///   - Decodes by decoding the length and then attempting to decode the value that follows.
+pub fn variable_size_bytes<'l, 'v, LT: Int + ToPrimitive + FromPrimitive + Display, VT>(len_codec: &'l Codec<LT>, val_codec: &'v Codec<VT>) -> VariableSizeCodec<'l, 'v, LT, VT> {
+    VariableSizeCodec { len_codec: len_codec, val_codec: val_codec }
+}
+pub struct VariableSizeCodec<'l, 'v, LT: Int + ToPrimitive + FromPrimitive + Display, VT> { len_codec: &'l Codec<LT>, val_codec: &'v Codec<VT> }
+impl<'l, 'v, LT: Int + ToPrimitive + FromPrimitive + Display, VT> Codec<VT> for VariableSizeCodec<'l, 'v, LT, VT> {
+    // TODO: Currently there is no Unsigned trait that we can use to restrict the length codec to unsigned types,
+    // but there is one proposed here:
+    //   https://github.com/rust-lang/rfcs/blob/master/text/0369-num-reform.md
+    // So if that ever comes to fruition, we should switch to that trait here in place of Int.
     
-//     // XXX
-//     let len_encoder = Rc::new(len_codec);
-//     let len_decoder = len_encoder.clone();
-//     let val_encoder = Rc::new(val_codec);
-//     let val_decoder = val_encoder.clone();
+    fn encode(&self, value: &VT) -> EncodeResult {
+        // Encode the value, then prepend the length of the encoded value
+        self.val_codec.encode(&value).and_then(|encoded_val| {
+            // Fail if length is too long to be encoded
+            match LT::from_usize(encoded_val.length()) {
+                Some(len) => self.len_codec.encode(&len).map(|encoded_len| byte_vector::append(&encoded_len, &encoded_val)),
+                None => Err(Error::new(format!("Length of encoded value ({} bytes) is greater than maximum value ({}) of length type", encoded_val.length(), LT::max_value())))
+            }
+        })
+    }
 
-//     Codec {
-//         encoder: Box::new(move |value: &VT| {
-//             // Encode the value, then prepend the length of the encoded value
-//             val_encoder.encode(&value).and_then(|encoded_val| {
-//                 // Fail if length is too long to be encoded
-//                 match LT::from_usize(encoded_val.length()) {
-//                     Some(len) => len_encoder.encode(&len).map(|encoded_len| byte_vector::append(&encoded_len, &encoded_val)),
-//                     None => Err(Error::new(format!("Length of encoded value ({} bytes) is greater than maximum value ({}) of length type", encoded_val.length(), LT::max_value())))
-//                 }
-//             })
-//         }),
-//         decoder: Box::new(move |bv| {
-//             // Decode the length, then decode the value
-//             len_decoder.decode(&bv).and_then(|decoded_len| {
-//                 // TODO: Ideally we'd just use fixed_size_bytes() here, but not sure how to transfer ownership of val_decoder
-//                 let len = decoded_len.value.to_usize().unwrap();
-//                 decoded_len.remainder.take(len).and_then(|taken| {
-//                     val_decoder.decode(&taken).map(|decoded| {
-//                         DecoderResult { value: decoded.value, remainder: bv.drop(len).unwrap() }
-//                     })
-//                 })
-//             })
-//         })
-//     }
-// }
+    fn decode(&self, bv: &ByteVector) -> DecodeResult<VT> {
+        // Decode the length, then decode the value
+        self.len_codec.decode(&bv).and_then(|decoded_len| {
+            // TODO: Ideally we'd just use fixed_size_bytes() here, but not sure how to transfer ownership of val_decoder
+            let len = decoded_len.value.to_usize().unwrap();
+            decoded_len.remainder.take(len).and_then(|taken| {
+                self.val_codec.decode(&taken).map(|decoded| {
+                    DecoderResult { value: decoded.value, remainder: bv.drop(len).unwrap() }
+                })
+            })
+        })
+    }
+}
 
 /// Codec for HNil type.
 pub static hnil_codec: &'static Codec<HNil> = &HNilCodec;
@@ -639,23 +636,23 @@ mod tests {
         assert_eq!(codec.decode(&input).unwrap_err().message(), "Requested view offset of 0 and length 4 bytes exceeds vector length of 2");
     }
 
-    // //
-    // // Variable size bytes codec
-    // //
+    //
+    // Variable size bytes codec
+    //
 
-    // #[test]
-    // fn a_variable_size_bytes_codec_should_round_trip() {
-    //     let input = byte_vector!(7, 1, 2, 3, 4);
-    //     let codec = variable_size_bytes(uint16(), identity_bytes());
-    //     assert_round_trip_bytes(&codec, &input, &Some(byte_vector!(0, 5, 7, 1, 2, 3, 4)));
-    // }
+    #[test]
+    fn a_variable_size_bytes_codec_should_round_trip() {
+        let input = byte_vector!(7, 1, 2, 3, 4);
+        let codec = variable_size_bytes(uint16, identity_bytes);
+        assert_round_trip_bytes(&codec, &input, &Some(byte_vector!(0, 5, 7, 1, 2, 3, 4)));
+    }
 
-    // #[test]
-    // fn encoding_with_variable_size_codec_should_fail_when_length_of_encoded_value_is_too_large() {
-    //     let input = byte_vector::fill(0x7, 256);
-    //     let codec = variable_size_bytes(uint8(), identity_bytes());
-    //     assert_eq!(codec.encode(&input).unwrap_err().message(), "Length of encoded value (256 bytes) is greater than maximum value (255) of length type");
-    // }
+    #[test]
+    fn encoding_with_variable_size_codec_should_fail_when_length_of_encoded_value_is_too_large() {
+        let input = byte_vector::fill(0x7, 256);
+        let codec = variable_size_bytes(uint8, identity_bytes);
+        assert_eq!(codec.encode(&input).unwrap_err().message(), "Length of encoded value (256 bytes) is greater than maximum value (255) of length type");
+    }
 
     //
     // Context injection ('|' operator)
@@ -716,28 +713,28 @@ mod tests {
     //     assert_round_trip_bytes(&codec, &input, &Some(expected));
     // }
 
-    // //
-    // // Struct conversion codec
-    // //
+    //
+    // Struct conversion codec
+    //
     
-    // record_struct_with_hlist_type!(
-    //     TestStruct1, HCons<u8, HCons<u8, HNil>>,
-    //     foo: u8,
-    //     bar: u8);
+    record_struct_with_hlist_type!(
+        TestStruct1, HCons<u8, HCons<u8, HNil>>,
+        foo: u8,
+        bar: u8);
 
-    // record_struct!(
-    //     TestStruct2,
-    //     foo: u8,
-    //     bar: u8);
+    record_struct!(
+        TestStruct2,
+        foo: u8,
+        bar: u8);
 
-    // #[test]
-    // fn record_structs_should_work() {
-    //     let hlist = hlist!(7u8, 3u8);
-    //     let s1 = TestStruct1::from_hlist(&hlist);
-    //     let s2 = TestStruct2::from_hlist(&hlist);
-    //     assert_eq!(s1.foo, s2.foo);
-    //     assert_eq!(s1.bar, s2.bar);
-    // }
+    #[test]
+    fn record_structs_should_work() {
+        let hlist = hlist!(7u8, 3u8);
+        let s1 = TestStruct1::from_hlist(&hlist);
+        let s2 = TestStruct2::from_hlist(&hlist);
+        assert_eq!(s1.foo, s2.foo);
+        assert_eq!(s1.bar, s2.bar);
+    }
 
     // #[test]
     // fn a_struct_codec_should_round_trip() {
