@@ -332,6 +332,29 @@ impl<A, L: HList> Codec<HCons<A, L>> for HListPrependCodec<A, L> {
     }
 }
 
+/// Trait implemented by structs created by the record_struct! macro.
+pub trait AsHList<T> {
+    fn from_hlist(hlist: &T) -> Self;
+    fn to_hlist(&self) -> T;
+}
+
+/// Codec for structs created by the record_struct! macro.
+pub fn struct_codec<HT: 'static, ST: AsHList<HT>>(hlist_codec: Box<Codec<HT>>) -> Box<Codec<ST>> {
+    Box::new(RecordStructCodec { hlist_codec: hlist_codec })
+}
+struct RecordStructCodec<HT> { hlist_codec: Box<Codec<HT>> }
+impl<HT, ST: AsHList<HT>> Codec<ST> for RecordStructCodec<HT> {
+    fn encode(&self, value: &ST) -> EncodeResult {
+        self.hlist_codec.encode(&value.to_hlist())
+    }
+
+    fn decode(&self, bv: &ByteVector) -> DecodeResult<ST> {
+        self.hlist_codec.decode(bv).map(|decoded| {
+            DecoderResult { value: ST::from_hlist(&decoded.value), remainder: decoded.remainder }
+        })
+    }
+}
+
 /// Override for the '|' operator that creates a new codec that injects additional context (e.g. in error messages)
 /// into the codec on the right-hand side.
 impl<T: 'static> core::ops::BitOr<Box<Codec<T>>> for &'static str {
@@ -706,9 +729,9 @@ mod tests {
         assert_eq!(s1.bar, s2.bar);
     }
 
-    // #[test]
-    // fn a_struct_codec_should_round_trip() {
-    //     let codec = scodec!(TestStruct2, hcodec!({uint8()} :: {uint8()}));
-    //     assert_round_trip_bytes(codec, &TestStruct2 { foo: 7u8, bar: 3u8 }, &Some(byte_vector!(7, 3)));
-    // }
+    #[test]
+    fn a_struct_codec_should_round_trip() {
+        let codec = struct_codec!(TestStruct2 from {uint8()} :: {uint8()});
+        assert_round_trip_bytes(codec, &TestStruct2 { foo: 7u8, bar: 3u8 }, &Some(byte_vector!(7, 3)));
+    }
 }
