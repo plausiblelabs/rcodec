@@ -41,7 +41,6 @@ pub struct DecoderResult<T> {
 pub type DecodeResult<T> = Result<DecoderResult<T>, Error>;
 
 /// A byte order specification, either big or little endian.
-#[derive(Clone)]
 pub enum ByteOrder {
     Big,
     Little
