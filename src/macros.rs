@@ -126,41 +126,11 @@ macro_rules! hcodec {
 ///   }
 ///
 /// We want a codec that automatically converts HList values to Header fields, like this:
-///   let header_codec = scodec!(Header, hcodec!({uint8()} :: {uint8()}));
-///
-/// which would expand to (roughly):
-///   Codec {
-///     encoder: |value| {
-///       hcodec.encode(hlist!(value.foo, value.bar))
-///     },
-///     decoder: |bv| {
-///       hcodec.decode(bv).map(|decoded| {
-///         let value = match decoded.value {
-///           HCons(foo, HCons(bar, HNil)) => Header { foo: foo, bar: bar }
-///         };
-///         DecodeResult { value: value, remainder: decoded.remainder }
-///       })
-///     }
-///   }
+///   let header_codec = struct_codec!(Header from {uint8()} :: {uint8()});
 #[macro_export]
-macro_rules! scodec {
-    { $stype:ident, $hcodec:expr } => {
-        {
-            let _hcodec = $hcodec;
-            let _encoder = ::std::rc::Rc::new(_hcodec);
-            let _decoder = _encoder.clone();
-            
-            Codec {
-                encoder: Box::new(move |value: &$stype| {
-                    _encoder.encode(&value.to_hlist())
-                }),
-                decoder: Box::new(move |bv| {
-                    _decoder.decode(bv).map(|decoded| {
-                        DecoderResult { value: $stype::from_hlist(&decoded.value), remainder: decoded.remainder }
-                    })
-                })
-            }
-        }
+macro_rules! struct_codec {
+    { $stype:ident from $($hcodec:tt)+ } => {
+        { struct_codec::<_, $stype>(hcodec!($($hcodec)+)) }
     };
 }
 
@@ -177,8 +147,8 @@ macro_rules! record_struct_with_hlist_type {
         }
 
         #[allow(dead_code)]
-        impl $stype {
-            fn from_hlist(hlist: &$hlisttype) -> $stype {
+        impl AsHList<$hlisttype> for $stype {
+            fn from_hlist(hlist: &$hlisttype) -> Self {
                 match *hlist {
                     record_struct_hlist_pattern!($($fieldname),+) => $stype { $($fieldname: $fieldname),+ }
                 }
