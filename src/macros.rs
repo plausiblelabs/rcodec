@@ -106,16 +106,16 @@ macro_rules! byte_vector {
 #[macro_export]
 macro_rules! hcodec {
     {} => {
-        hnil_codec
+        hnil_codec()
     };
     { $head:block } => {
-        hlist_prepend_codec($head, hnil_codec)
+        hlist_prepend_codec($head, hnil_codec())
     };
     { $head:block :: $($tail:tt)+ } => {
-        hlist_prepend_codec($head, &hcodec!($($tail)+))
+        hlist_prepend_codec($head, hcodec!($($tail)+))
     };
     { $head:block >> $($tail:tt)+ } => {
-        drop_left($head, &hcodec!($($tail)+))
+        drop_left($head, hcodec!($($tail)+))
     };
 }
 
