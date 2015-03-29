@@ -117,45 +117,41 @@ impl<T: Int + FromPrimitive> Codec<T> for IntegralCodec {
     fn decode(&self, bv: &ByteVector) -> DecodeResult<T> {
         let size = size_of::<T>();
         let v = &mut vec::from_elem(0u8, size);
-        match bv.read(v, 0, size) {
-            Ok(..) => {
-                let value = match size {
-                    1 => {
-                        // i8 requires special handling since it can't hold values >= 128.
-                        // We convert the byte value to an i16 and then work with it to
-                        // get around that limitation. Interpretation as two's complement
-                        // is done manually by subtracting if the type is signed and
-                        // the unsigned byte value is in the upper (negative) half of
-                        // the range.
-                        let mut value: i16 = num::cast(v[0]).unwrap();
-                        let tmax: i16 = num::cast(T::max_value()).unwrap();
-                        if value > tmax {
-                            // This condition is only true if T is i8 and the value
-                            // is negative. Convert from the serialized unsigned byte
-                            // to the deserialized signed integer by subtracting 2^8.
-                            value -= 256;
-                        }
-                        num::cast(value).unwrap()
+        bv.read(v, 0, size).and_then(|_size| {
+            let value = match size {
+                1 => {
+                    // i8 requires special handling since it can't hold values >= 128.
+                    // We convert the byte value to an i16 and then work with it to
+                    // get around that limitation. Interpretation as two's complement
+                    // is done manually by subtracting if the type is signed and
+                    // the unsigned byte value is in the upper (negative) half of
+                    // the range.
+                    let mut value: i16 = num::cast(v[0]).unwrap();
+                    let tmax: i16 = num::cast(T::max_value()).unwrap();
+                    if value > tmax {
+                        // This condition is only true if T is i8 and the value
+                        // is negative. Convert from the serialized unsigned byte
+                        // to the deserialized signed integer by subtracting 2^8.
+                        value -= 256;
                     }
-                    _ => {
-                        let mut value = T::zero();
-                        for i in 0..size {
-                            let byte = T::from_u8(v[i]).unwrap();
-                            value = match self.order {
-                                ByteOrder::Big => (value << 8) | byte,
-                                ByteOrder::Little => value | (byte << (i * 8))
-                            };
-                        }
-                        value
-                    }
-                };
-                match bv.drop(size) {
-                    Ok(remainder) => Ok(DecoderResult { value: value, remainder: remainder }),
-                    Err(e) => Err(e)
+                    num::cast(value).unwrap()
                 }
-            },
-            Err(e) => Err(e)
-        }
+                _ => {
+                    let mut value = T::zero();
+                    for i in 0..size {
+                        let byte = T::from_u8(v[i]).unwrap();
+                        value = match self.order {
+                            ByteOrder::Big => (value << 8) | byte,
+                            ByteOrder::Little => value | (byte << (i * 8))
+                        };
+                    }
+                    value
+                }
+            };
+            bv.drop(size).map(|remainder| {
+                DecoderResult { value: value, remainder: remainder }
+            })
+        })
     }
 }
 
