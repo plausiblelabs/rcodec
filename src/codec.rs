@@ -40,12 +40,6 @@ pub struct DecoderResult<T> {
 /// A result type returned by Decoder operations.
 pub type DecodeResult<T> = Result<DecoderResult<T>, Error>;
 
-/// A byte order specification, either big or little endian.
-pub enum ByteOrder {
-    Big,
-    Little
-}
-
 /// Unsigned 8-bit integer codec.
 pub fn uint8() -> Box<Codec<u8>> { Box::new(IntegralCodec { order: ByteOrder::Big }) }
 
@@ -87,6 +81,12 @@ pub fn uint64_l() -> Box<Codec<u64>> { Box::new(IntegralCodec { order: ByteOrder
 
 // /// Little-endian signed 64-bit integer codec.
 pub fn int64_l() -> Box<Codec<i64>> { Box::new(IntegralCodec { order: ByteOrder::Little }) }
+
+/// A byte order specification, either big or little endian.
+enum ByteOrder {
+    Big,
+    Little
+}
 
 struct IntegralCodec { order: ByteOrder }
 impl<T: Int + FromPrimitive> Codec<T> for IntegralCodec {
