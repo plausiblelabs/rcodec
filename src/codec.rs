@@ -43,43 +43,43 @@ pub type DecodeResult<T> = Result<DecoderResult<T>, Error>;
 /// Unsigned 8-bit integer codec.
 pub fn uint8() -> Box<Codec<u8>> { Box::new(IntegralCodec { order: ByteOrder::Big }) }
 
-// /// Signed 8-bit integer codec.
+/// Signed 8-bit integer codec.
 pub fn int8() -> Box<Codec<i8>> { Box::new(IntegralCodec { order: ByteOrder::Big }) }
 
-// /// Big-endian unsigned 16-bit integer codec.
+/// Big-endian unsigned 16-bit integer codec.
 pub fn uint16() -> Box<Codec<u16>> { Box::new(IntegralCodec { order: ByteOrder::Big }) }
 
-// /// Big-endian signed 16-bit integer codec.
+/// Big-endian signed 16-bit integer codec.
 pub fn int16() -> Box<Codec<i16>> { Box::new(IntegralCodec { order: ByteOrder::Big }) }
 
-// /// Big-endian unsigned 32-bit integer codec.
+/// Big-endian unsigned 32-bit integer codec.
 pub fn uint32() -> Box<Codec<u32>> { Box::new(IntegralCodec { order: ByteOrder::Big }) }
 
-// /// Big-endian signed 32-bit integer codec.
+/// Big-endian signed 32-bit integer codec.
 pub fn int32() -> Box<Codec<i32>> { Box::new(IntegralCodec { order: ByteOrder::Big }) }
 
-// /// Big-endian unsigned 64-bit integer codec.
+/// Big-endian unsigned 64-bit integer codec.
 pub fn uint64() -> Box<Codec<u64>> { Box::new(IntegralCodec { order: ByteOrder::Big }) }
 
-// /// Big-endian signed 64-bit integer codec.
+/// Big-endian signed 64-bit integer codec.
 pub fn int64() -> Box<Codec<i64>> { Box::new(IntegralCodec { order: ByteOrder::Big }) }
 
-// /// Little-endian unsigned 16-bit integer codec.
+/// Little-endian unsigned 16-bit integer codec.
 pub fn uint16_l() -> Box<Codec<u16>> { Box::new(IntegralCodec { order: ByteOrder::Little }) }
 
-// /// Little-endian signed 16-bit integer codec.
+/// Little-endian signed 16-bit integer codec.
 pub fn int16_l() -> Box<Codec<i16>> { Box::new(IntegralCodec { order: ByteOrder::Little }) }
 
-// /// Little-endian unsigned 32-bit integer codec.
+/// Little-endian unsigned 32-bit integer codec.
 pub fn uint32_l() -> Box<Codec<u32>> { Box::new(IntegralCodec { order: ByteOrder::Little }) }
 
-// /// Little-endian signed 32-bit integer codec.
+/// Little-endian signed 32-bit integer codec.
 pub fn int32_l() -> Box<Codec<i32>> { Box::new(IntegralCodec { order: ByteOrder::Little }) }
 
-// /// Little-endian unsigned 64-bit integer codec.
+/// Little-endian unsigned 64-bit integer codec.
 pub fn uint64_l() -> Box<Codec<u64>> { Box::new(IntegralCodec { order: ByteOrder::Little }) }
 
-// /// Little-endian signed 64-bit integer codec.
+/// Little-endian signed 64-bit integer codec.
 pub fn int64_l() -> Box<Codec<i64>> { Box::new(IntegralCodec { order: ByteOrder::Little }) }
 
 /// A byte order specification, either big or little endian.
