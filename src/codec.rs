@@ -40,47 +40,85 @@ pub struct DecoderResult<T> {
 /// A result type returned by Decoder operations.
 pub type DecodeResult<T> = Result<DecoderResult<T>, Error>;
 
+/// TODO: Document
+pub enum CodecRef<T: 'static> {
+    Owned(Box<Codec<T>>),
+    Static(&'static Codec<T>)
+}
+
+impl<T: 'static> Codec<T> for CodecRef<T> {
+    fn encode(&self, value: &T) -> EncodeResult {
+        match *self {
+            CodecRef::Owned(ref c) => c.encode(value),
+            CodecRef::Static(ref c) => c.encode(value)
+        }
+    }
+
+    fn decode(&self, bv: &ByteVector) -> DecodeResult<T> {
+        match *self {
+            CodecRef::Owned(ref c) => c.decode(bv),
+            CodecRef::Static(ref c) => c.decode(bv)
+        }
+    }
+}
+
+pub trait AsCodecRef<T> {
+    fn as_codec_ref(self) -> CodecRef<T>;
+}
+
+impl<T> AsCodecRef<T> for &'static Codec<T> {
+    fn as_codec_ref(self) -> CodecRef<T> {
+        CodecRef::Static(self)
+    }
+}
+
+impl<T> AsCodecRef<T> for Box<Codec<T>> {
+    fn as_codec_ref(self) -> CodecRef<T> {
+        CodecRef::Owned(self)
+    }
+}
+
 /// Unsigned 8-bit integer codec.
-pub fn uint8() -> Box<Codec<u8>> { Box::new(IntegralCodec { order: ByteOrder::Big }) }
+pub static uint8: &'static Codec<u8> = &IntegralCodec { order: ByteOrder::Big };
 
 /// Signed 8-bit integer codec.
-pub fn int8() -> Box<Codec<i8>> { Box::new(IntegralCodec { order: ByteOrder::Big }) }
+pub static int8: &'static Codec<i8> = &IntegralCodec { order: ByteOrder::Big };
 
 /// Big-endian unsigned 16-bit integer codec.
-pub fn uint16() -> Box<Codec<u16>> { Box::new(IntegralCodec { order: ByteOrder::Big }) }
+pub static uint16: &'static Codec<u16> = &IntegralCodec { order: ByteOrder::Big };
 
 /// Big-endian signed 16-bit integer codec.
-pub fn int16() -> Box<Codec<i16>> { Box::new(IntegralCodec { order: ByteOrder::Big }) }
+pub static int16: &'static Codec<i16> = &IntegralCodec { order: ByteOrder::Big };
 
 /// Big-endian unsigned 32-bit integer codec.
-pub fn uint32() -> Box<Codec<u32>> { Box::new(IntegralCodec { order: ByteOrder::Big }) }
+pub static uint32: &'static Codec<u32> = &IntegralCodec { order: ByteOrder::Big };
 
 /// Big-endian signed 32-bit integer codec.
-pub fn int32() -> Box<Codec<i32>> { Box::new(IntegralCodec { order: ByteOrder::Big }) }
+pub static int32: &'static Codec<i32> = &IntegralCodec { order: ByteOrder::Big };
 
 /// Big-endian unsigned 64-bit integer codec.
-pub fn uint64() -> Box<Codec<u64>> { Box::new(IntegralCodec { order: ByteOrder::Big }) }
+pub static uint64: &'static Codec<u64> = &IntegralCodec { order: ByteOrder::Big };
 
 /// Big-endian signed 64-bit integer codec.
-pub fn int64() -> Box<Codec<i64>> { Box::new(IntegralCodec { order: ByteOrder::Big }) }
+pub static int64: &'static Codec<i64> = &IntegralCodec { order: ByteOrder::Big };
 
 /// Little-endian unsigned 16-bit integer codec.
-pub fn uint16_l() -> Box<Codec<u16>> { Box::new(IntegralCodec { order: ByteOrder::Little }) }
+pub static uint16_l: &'static Codec<u16> = &IntegralCodec { order: ByteOrder::Little };
 
 /// Little-endian signed 16-bit integer codec.
-pub fn int16_l() -> Box<Codec<i16>> { Box::new(IntegralCodec { order: ByteOrder::Little }) }
+pub static int16_l: &'static Codec<i16> = &IntegralCodec { order: ByteOrder::Little };
 
 /// Little-endian unsigned 32-bit integer codec.
-pub fn uint32_l() -> Box<Codec<u32>> { Box::new(IntegralCodec { order: ByteOrder::Little }) }
+pub static uint32_l: &'static Codec<u32> = &IntegralCodec { order: ByteOrder::Little };
 
 /// Little-endian signed 32-bit integer codec.
-pub fn int32_l() -> Box<Codec<i32>> { Box::new(IntegralCodec { order: ByteOrder::Little }) }
+pub static int32_l: &'static Codec<i32> = &IntegralCodec { order: ByteOrder::Little };
 
 /// Little-endian unsigned 64-bit integer codec.
-pub fn uint64_l() -> Box<Codec<u64>> { Box::new(IntegralCodec { order: ByteOrder::Little }) }
+pub static uint64_l: &'static Codec<u64> = &IntegralCodec { order: ByteOrder::Little };
 
 /// Little-endian signed 64-bit integer codec.
-pub fn int64_l() -> Box<Codec<i64>> { Box::new(IntegralCodec { order: ByteOrder::Little }) }
+pub static int64_l: &'static Codec<i64> = &IntegralCodec { order: ByteOrder::Little };
 
 /// A byte order specification, either big or little endian.
 enum ByteOrder {
@@ -197,9 +235,7 @@ impl Codec<()> for ConstantCodec {
 /// Identity byte vector codec.
 ///   - Encodes by returning the given byte vector.
 ///   - Decodes by taking all remaining bytes from the given byte vector.
-pub fn identity_bytes() -> Box<Codec<ByteVector>> {
-    Box::new(IdentityCodec)
-}
+pub static identity_bytes: &'static Codec<ByteVector> = &IdentityCodec;
 struct IdentityCodec;
 impl Codec<ByteVector> for IdentityCodec {
     fn encode(&self, value: &ByteVector) -> EncodeResult {
@@ -215,7 +251,7 @@ impl Codec<ByteVector> for IdentityCodec {
 ///   - Encodes by returning the given byte vector if its length is `len` bytes, otherwise returns an error.
 ///   - Decodes by taking `len` bytes from the given byte vector.
 pub fn bytes(len: usize) -> Box<Codec<ByteVector>> {
-    fixed_size_bytes(len, identity_bytes())
+    fixed_size_bytes(len, identity_bytes)
 }
 
 /// Codec that limits the number of bytes that are available to `codec`.
@@ -226,10 +262,10 @@ pub fn bytes(len: usize) -> Box<Codec<ByteVector>> {
 ///
 /// When decoding, the given `codec` is only given `len` bytes.  If `codec` does
 /// not consume all `len` bytes, any remaining bytes are discarded.
-pub fn fixed_size_bytes<T: 'static>(len: usize, codec: Box<Codec<T>>) -> Box<Codec<T>> {
-    Box::new(FixedSizeCodec { len: len, codec: codec })
+pub fn fixed_size_bytes<T: 'static, TC: AsCodecRef<T>>(len: usize, codec: TC) -> Box<Codec<T>> {
+    Box::new(FixedSizeCodec { len: len, codec: codec.as_codec_ref() })
 }
-struct FixedSizeCodec<T> { len: usize, codec: Box<Codec<T>> }
+struct FixedSizeCodec<T: 'static> { len: usize, codec: CodecRef<T> }
 impl<T> Codec<T> for FixedSizeCodec<T> {
     fn encode(&self, value: &T) -> EncodeResult {
         self.codec.encode(value).and_then(|encoded| {
@@ -255,28 +291,28 @@ impl<T> Codec<T> for FixedSizeCodec<T> {
 /// Codec for length-delimited values.
 ///   - Encodes by encoding the length (in bytes) of the value followed by the value itself.
 ///   - Decodes by decoding the length and then attempting to decode the value that follows.
-pub fn variable_size_bytes<LT: 'static + Int + ToPrimitive + FromPrimitive + Display, VT: 'static>(len_codec: Box<Codec<LT>>, val_codec: Box<Codec<VT>>) -> Box<Codec<VT>> {
-    Box::new(VariableSizeCodec { len_codec: len_codec, val_codec: val_codec })
+pub fn variable_size_bytes<L: 'static + Int + ToPrimitive + FromPrimitive + Display, V: 'static, LC: AsCodecRef<L>, VC: AsCodecRef<V>>(len_codec: LC, val_codec: VC) -> Box<Codec<V>> {
+    Box::new(VariableSizeCodec { len_codec: len_codec.as_codec_ref(), val_codec: val_codec.as_codec_ref() })
 }
-struct VariableSizeCodec<LT: Int + ToPrimitive + FromPrimitive + Display, VT> { len_codec: Box<Codec<LT>>, val_codec: Box<Codec<VT>> }
-impl<LT: Int + ToPrimitive + FromPrimitive + Display, VT> Codec<VT> for VariableSizeCodec<LT, VT> {
+struct VariableSizeCodec<L: 'static + Int + ToPrimitive + FromPrimitive + Display, V: 'static> { len_codec: CodecRef<L>, val_codec: CodecRef<V> }
+impl<L: Int + ToPrimitive + FromPrimitive + Display, V> Codec<V> for VariableSizeCodec<L, V> {
     // TODO: Currently there is no Unsigned trait that we can use to restrict the length codec to unsigned types,
     // but there is one proposed here:
     //   https://github.com/rust-lang/rfcs/blob/master/text/0369-num-reform.md
     // So if that ever comes to fruition, we should switch to that trait here in place of Int.
     
-    fn encode(&self, value: &VT) -> EncodeResult {
+    fn encode(&self, value: &V) -> EncodeResult {
         // Encode the value, then prepend the length of the encoded value
         self.val_codec.encode(&value).and_then(|encoded_val| {
             // Fail if length is too long to be encoded
-            match LT::from_usize(encoded_val.length()) {
+            match L::from_usize(encoded_val.length()) {
                 Some(len) => self.len_codec.encode(&len).map(|encoded_len| byte_vector::append(&encoded_len, &encoded_val)),
-                None => Err(Error::new(format!("Length of encoded value ({} bytes) is greater than maximum value ({}) of length type", encoded_val.length(), LT::max_value())))
+                None => Err(Error::new(format!("Length of encoded value ({} bytes) is greater than maximum value ({}) of length type", encoded_val.length(), L::max_value())))
             }
         })
     }
 
-    fn decode(&self, bv: &ByteVector) -> DecodeResult<VT> {
+    fn decode(&self, bv: &ByteVector) -> DecodeResult<V> {
         // Decode the length, then decode the value
         self.len_codec.decode(&bv).and_then(|decoded_len| {
             // TODO: Ideally we'd just use fixed_size_bytes() here, but not sure how to transfer ownership of val_decoder
@@ -291,9 +327,7 @@ impl<LT: Int + ToPrimitive + FromPrimitive + Display, VT> Codec<VT> for Variable
 }
 
 /// Codec for HNil type.
-pub fn hnil_codec() -> Box<Codec<HNil>> {
-    Box::new(HNilCodec)
-}
+pub static hnil_codec: &'static Codec<HNil> = &HNilCodec;
 struct HNilCodec;
 impl Codec<HNil> for HNilCodec {
     fn encode(&self, _value: &HNil) -> EncodeResult {
@@ -301,15 +335,15 @@ impl Codec<HNil> for HNilCodec {
     }
 
     fn decode(&self, bv: &ByteVector) -> DecodeResult<HNil> {
-            Ok(DecoderResult { value: HNil, remainder: bv.clone() })
+        Ok(DecoderResult { value: HNil, remainder: bv.clone() })
     }
 }
 
 /// Codec used to convert an HList of codecs into a single codec that encodes/decodes an HList of values.
-pub fn hlist_prepend_codec<A: 'static, L: 'static + HList>(a_codec: Box<Codec<A>>, l_codec: Box<Codec<L>>) -> Box<Codec<HCons<A, L>>> {
-    Box::new(HListPrependCodec { a_codec: a_codec, l_codec: l_codec })
+pub fn hlist_prepend_codec<A: 'static, L: 'static + HList, AC: AsCodecRef<A>, LC: AsCodecRef<L>>(a_codec: AC, l_codec: LC) -> Box<Codec<HCons<A, L>>> {
+    Box::new(HListPrependCodec { a_codec: a_codec.as_codec_ref(), l_codec: l_codec.as_codec_ref() })
 }
-struct HListPrependCodec<A, L: HList> { a_codec: Box<Codec<A>>, l_codec: Box<Codec<L>> }
+struct HListPrependCodec<A: 'static, L: 'static + HList> { a_codec: CodecRef<A>, l_codec: CodecRef<L> }
 impl<A, L: HList> Codec<HCons<A, L>> for HListPrependCodec<A, L> {
     fn encode(&self, value: &HCons<A, L>) -> EncodeResult {
         // TODO: Generalize this as an encode_both() function
@@ -335,32 +369,40 @@ pub trait AsHList<T> {
 }
 
 /// Codec for structs created by the record_struct! macro.
-pub fn struct_codec<HT: 'static, ST: AsHList<HT>>(hlist_codec: Box<Codec<HT>>) -> Box<Codec<ST>> {
-    Box::new(RecordStructCodec { hlist_codec: hlist_codec })
+pub fn struct_codec<H: 'static, S: AsHList<H>, HC: AsCodecRef<H>>(hlist_codec: HC) -> Box<Codec<S>> {
+    Box::new(RecordStructCodec { hlist_codec: hlist_codec.as_codec_ref() })
 }
-struct RecordStructCodec<HT> { hlist_codec: Box<Codec<HT>> }
-impl<HT, ST: AsHList<HT>> Codec<ST> for RecordStructCodec<HT> {
-    fn encode(&self, value: &ST) -> EncodeResult {
+struct RecordStructCodec<H: 'static> { hlist_codec: CodecRef<H> }
+impl<H, S: AsHList<H>> Codec<S> for RecordStructCodec<H> {
+    fn encode(&self, value: &S) -> EncodeResult {
         self.hlist_codec.encode(&value.to_hlist())
     }
 
-    fn decode(&self, bv: &ByteVector) -> DecodeResult<ST> {
+    fn decode(&self, bv: &ByteVector) -> DecodeResult<S> {
         self.hlist_codec.decode(bv).map(|decoded| {
-            DecoderResult { value: ST::from_hlist(&decoded.value), remainder: decoded.remainder }
+            DecoderResult { value: S::from_hlist(&decoded.value), remainder: decoded.remainder }
         })
     }
 }
 
 /// Override for the '|' operator that creates a new codec that injects additional context (e.g. in error messages)
 /// into the codec on the right-hand side.
+// TODO: Can we have a single impl that works on AsCodecRef<T>?
 impl<T: 'static> core::ops::BitOr<Box<Codec<T>>> for &'static str {
     type Output = Box<Codec<T>>;
 
     fn bitor(self, rhs: Box<Codec<T>>) -> Box<Codec<T>> {
-        Box::new(ContextCodec { codec: rhs, context: self })
+        Box::new(ContextCodec { codec: CodecRef::Owned(rhs), context: self })
     }
 }
-struct ContextCodec<T> { codec: Box<Codec<T>>, context: &'static str }
+impl<T: 'static> core::ops::BitOr<&'static Codec<T>> for &'static str {
+    type Output = Box<Codec<T>>;
+
+    fn bitor(self, rhs: &'static Codec<T>) -> Box<Codec<T>> {
+        Box::new(ContextCodec { codec: CodecRef::Static(rhs), context: self })
+    }
+}
+struct ContextCodec<T: 'static> { codec: CodecRef<T>, context: &'static str }
 impl<T> Codec<T> for ContextCodec<T> {
     fn encode(&self, value: &T) -> EncodeResult {
         self.codec.encode(value).map_err(|e| e.push_context(self.context))
@@ -402,8 +444,9 @@ mod tests {
     use byte_vector::ByteVector;
     use hlist::*;
 
-    fn assert_round_trip_bytes<T: Eq + Debug>(codec: Box<Codec<T>>, value: &T, raw_bytes: &Option<ByteVector>) {
+    fn assert_round_trip_bytes<T: 'static + Eq + Debug, C: AsCodecRef<T>>(c: C, value: &T, raw_bytes: &Option<ByteVector>) {
         // Encode
+        let codec = c.as_codec_ref();
         let result = codec.encode(value).and_then(|encoded| {
             // Compare encoded bytes to the expected bytes, if provided
             let compare_result = match *raw_bytes {
@@ -437,57 +480,57 @@ mod tests {
     
     #[test]
     fn a_u8_value_should_round_trip() {
-        assert_round_trip_bytes(uint8(), &7, &Some(byte_vector!(7)));
+        assert_round_trip_bytes(uint8, &7, &Some(byte_vector!(7)));
     }
     
     #[test]
     fn an_i8_value_should_round_trip() {
-        assert_round_trip_bytes(int8(), &7, &Some(byte_vector!(7)));
-        assert_round_trip_bytes(int8(), &-2, &Some(byte_vector!(0xfe)));
-        assert_round_trip_bytes(int8(), &-16, &Some(byte_vector!(0xf0)));
-        assert_round_trip_bytes(int8(), &-128, &Some(byte_vector!(0x80)));
+        assert_round_trip_bytes(int8, &7, &Some(byte_vector!(7)));
+        assert_round_trip_bytes(int8, &-2, &Some(byte_vector!(0xfe)));
+        assert_round_trip_bytes(int8, &-16, &Some(byte_vector!(0xf0)));
+        assert_round_trip_bytes(int8, &-128, &Some(byte_vector!(0x80)));
     }
     
     #[test]
     fn a_u16_value_should_round_trip() {
-        assert_round_trip_bytes(uint16(), &0x1234, &Some(byte_vector!(0x12, 0x34)));
-        assert_round_trip_bytes(uint16_l(), &0x1234, &Some(byte_vector!(0x34, 0x12)));
+        assert_round_trip_bytes(uint16, &0x1234, &Some(byte_vector!(0x12, 0x34)));
+        assert_round_trip_bytes(uint16_l, &0x1234, &Some(byte_vector!(0x34, 0x12)));
     }
 
     #[test]
     fn an_i16_value_should_round_trip() {
-        assert_round_trip_bytes(int16(), &0x1234, &Some(byte_vector!(0x12, 0x34)));
-        assert_round_trip_bytes(int16(), &-2, &Some(byte_vector!(0xff, 0xfe)));
-        assert_round_trip_bytes(int16_l(), &0x1234, &Some(byte_vector!(0x34, 0x12)));
-        assert_round_trip_bytes(int16_l(), &-2, &Some(byte_vector!(0xfe, 0xff)));
+        assert_round_trip_bytes(int16, &0x1234, &Some(byte_vector!(0x12, 0x34)));
+        assert_round_trip_bytes(int16, &-2, &Some(byte_vector!(0xff, 0xfe)));
+        assert_round_trip_bytes(int16_l, &0x1234, &Some(byte_vector!(0x34, 0x12)));
+        assert_round_trip_bytes(int16_l, &-2, &Some(byte_vector!(0xfe, 0xff)));
     }
 
     #[test]
     fn a_u32_value_should_round_trip() {
-        assert_round_trip_bytes(uint32(), &0x12345678, &Some(byte_vector!(0x12, 0x34, 0x56, 0x78)));
-        assert_round_trip_bytes(uint32_l(), &0x12345678, &Some(byte_vector!(0x78, 0x56, 0x34, 0x12)));
+        assert_round_trip_bytes(uint32, &0x12345678, &Some(byte_vector!(0x12, 0x34, 0x56, 0x78)));
+        assert_round_trip_bytes(uint32_l, &0x12345678, &Some(byte_vector!(0x78, 0x56, 0x34, 0x12)));
     }
 
     #[test]
     fn an_i32_value_should_round_trip() {
-        assert_round_trip_bytes(uint32(), &0x12345678, &Some(byte_vector!(0x12, 0x34, 0x56, 0x78)));
-        assert_round_trip_bytes(uint32(), &-2, &Some(byte_vector!(0xff, 0xff, 0xff, 0xfe)));
-        assert_round_trip_bytes(uint32_l(), &0x12345678, &Some(byte_vector!(0x78, 0x56, 0x34, 0x12)));
-        assert_round_trip_bytes(uint32_l(), &-2, &Some(byte_vector!(0xfe, 0xff, 0xff, 0xff)));
+        assert_round_trip_bytes(uint32, &0x12345678, &Some(byte_vector!(0x12, 0x34, 0x56, 0x78)));
+        assert_round_trip_bytes(uint32, &-2, &Some(byte_vector!(0xff, 0xff, 0xff, 0xfe)));
+        assert_round_trip_bytes(uint32_l, &0x12345678, &Some(byte_vector!(0x78, 0x56, 0x34, 0x12)));
+        assert_round_trip_bytes(uint32_l, &-2, &Some(byte_vector!(0xfe, 0xff, 0xff, 0xff)));
     }
 
     #[test]
     fn a_u64_value_should_round_trip() {
-        assert_round_trip_bytes(uint64(), &0x1234567890abcdef, &Some(byte_vector!(0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef)));
-        assert_round_trip_bytes(uint64_l(), &0x1234567890abcdef, &Some(byte_vector!(0xef, 0xcd, 0xab, 0x90, 0x78, 0x56, 0x34, 0x12)));
+        assert_round_trip_bytes(uint64, &0x1234567890abcdef, &Some(byte_vector!(0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef)));
+        assert_round_trip_bytes(uint64_l, &0x1234567890abcdef, &Some(byte_vector!(0xef, 0xcd, 0xab, 0x90, 0x78, 0x56, 0x34, 0x12)));
     }
 
     #[test]
     fn an_i64_value_should_round_trip() {
-        assert_round_trip_bytes(int64(), &0x1234567890abcdef, &Some(byte_vector!(0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef)));
-        assert_round_trip_bytes(int64(), &-2, &Some(byte_vector!(0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe)));
-        assert_round_trip_bytes(int64_l(), &0x1234567890abcdef, &Some(byte_vector!(0xef, 0xcd, 0xab, 0x90, 0x78, 0x56, 0x34, 0x12)));
-        assert_round_trip_bytes(int64_l(), &-2, &Some(byte_vector!(0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff)));
+        assert_round_trip_bytes(int64, &0x1234567890abcdef, &Some(byte_vector!(0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef)));
+        assert_round_trip_bytes(int64, &-2, &Some(byte_vector!(0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe)));
+        assert_round_trip_bytes(int64_l, &0x1234567890abcdef, &Some(byte_vector!(0xef, 0xcd, 0xab, 0x90, 0x78, 0x56, 0x34, 0x12)));
+        assert_round_trip_bytes(int64_l, &-2, &Some(byte_vector!(0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff)));
     }
 
     //
@@ -550,7 +593,7 @@ mod tests {
     #[test]
     fn an_identity_codec_should_round_trip() {
         let input = byte_vector!(1, 2, 3, 4);
-        assert_round_trip_bytes(identity_bytes(), &input, &Some(input.clone()));
+        assert_round_trip_bytes(identity_bytes, &input, &Some(input.clone()));
     }
 
     //
@@ -589,13 +632,13 @@ mod tests {
 
     #[test]
     fn a_fixed_size_bytes_codec_should_round_trip() {
-        let codec = fixed_size_bytes(1, uint8());
+        let codec = fixed_size_bytes(1, uint8);
         assert_round_trip_bytes(codec, &7u8, &Some(byte_vector!(7)));
     }
 
     #[test]
     fn encoding_with_fixed_size_codec_should_pad_with_zeros_when_value_is_smaller_than_given_length() {
-        let codec = fixed_size_bytes(3, uint8());
+        let codec = fixed_size_bytes(3, uint8);
         assert_round_trip_bytes(codec, &7u8, &Some(byte_vector!(7, 0, 0)));
     }
 
@@ -608,7 +651,7 @@ mod tests {
     #[test]
     fn decoding_with_fixed_size_codec_should_return_remainder_that_had_len_bytes_dropped() {
         let input = byte_vector!(7, 1, 2, 3, 4);
-        let codec = fixed_size_bytes(3, uint8());
+        let codec = fixed_size_bytes(3, uint8);
         match codec.decode(&input) {
             Ok(result) => {
                 assert_eq!(result.value, 7u8);
@@ -632,14 +675,14 @@ mod tests {
     #[test]
     fn a_variable_size_bytes_codec_should_round_trip() {
         let input = byte_vector!(7, 1, 2, 3, 4);
-        let codec = variable_size_bytes(uint16(), identity_bytes());
+        let codec = variable_size_bytes(uint16, identity_bytes);
         assert_round_trip_bytes(codec, &input, &Some(byte_vector!(0, 5, 7, 1, 2, 3, 4)));
     }
 
     #[test]
     fn encoding_with_variable_size_codec_should_fail_when_length_of_encoded_value_is_too_large() {
         let input = byte_vector::fill(0x7, 256);
-        let codec = variable_size_bytes(uint8(), identity_bytes());
+        let codec = variable_size_bytes(uint8, identity_bytes);
         assert_eq!(codec.encode(&input).unwrap_err().message(), "Length of encoded value (256 bytes) is greater than maximum value (255) of length type");
     }
 
@@ -654,7 +697,7 @@ mod tests {
         let codec =
             ("section" |
              ("header" |
-              ("magic" | uint8())
+              ("magic" | uint8)
               )
              );
 
@@ -668,21 +711,21 @@ mod tests {
     
     #[test]
     fn an_hnil_codec_should_round_trip() {
-        assert_round_trip_bytes(hnil_codec(), &HNil, &Some(byte_vector::empty()));
+        assert_round_trip_bytes(hnil_codec, &HNil, &Some(byte_vector::empty()));
     }
 
     #[test]
     fn an_hlist_prepend_codec_should_round_trip() {
-        let codec1 = hlist_prepend_codec(uint8(), hnil_codec());
+        let codec1 = hlist_prepend_codec(uint8, hnil_codec);
         assert_round_trip_bytes(codec1, &hlist!(7u8), &Some(byte_vector!(7)));
 
-        let codec2 = hlist_prepend_codec(uint8(), hlist_prepend_codec(uint8(), hnil_codec()));
+        let codec2 = hlist_prepend_codec(uint8, hlist_prepend_codec(uint8, hnil_codec));
         assert_round_trip_bytes(codec2, &hlist!(7u8, 3u8), &Some(byte_vector!(7, 3)));
     }
 
     #[test]
     fn an_hlist_codec_should_round_trip() {
-        let codec = hcodec!({uint8()} :: {uint8()} :: {uint8()}); 
+        let codec = hcodec!({uint8} :: {uint8} :: {uint8}); 
         assert_round_trip_bytes(codec, &hlist!(7u8, 3u8, 1u8), &Some(byte_vector!(7, 3, 1)));
     }
 
@@ -691,10 +734,10 @@ mod tests {
         let m = byte_vector!(0xCA, 0xFE);
         let codec = hcodec!(
             { "magic"  | constant(&m) } >>
-            { "first"  | uint8()      } ::
+            { "first"  | uint8        } ::
             { "trash"  | ignore(1)    } >>
-            { "second" | uint8()      } :: 
-            { "third"  | uint8()      }
+            { "second" | uint8        } :: 
+            { "third"  | uint8        }
         );
         
         let input = hlist!(7u8, 3u8, 1u8);
@@ -727,7 +770,7 @@ mod tests {
 
     #[test]
     fn a_struct_codec_should_round_trip() {
-        let codec = struct_codec!(TestStruct2 from {uint8()} :: {uint8()});
+        let codec = struct_codec!(TestStruct2 from {uint8} :: {uint8});
         assert_round_trip_bytes(codec, &TestStruct2 { foo: 7u8, bar: 3u8 }, &Some(byte_vector!(7, 3)));
     }
 }
