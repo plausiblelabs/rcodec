@@ -799,18 +799,22 @@ mod tests {
     }
 
     #[test]
-    fn the_hcodec_macro_should_work_with_context_injected_codecs() {
+    fn the_hcodec_macro_should_work_with_a_mix_of_operations() {
         let m = byte_vector!(0xCA, 0xFE);
         let codec = hcodec!(
-            { "magic"  | constant(&m) } >>
-            { "first"  | uint8        } ::
-            { "trash"  | ignore(1)    } >>
-            { "second" | uint8        } :: 
-            { "third"  | uint8        }
+            { "magic"      | constant(&m) } >>
+            { "version"    | uint8        } ::
+            { "junk_len"   | uint8        } >>= |junk_len| { hcodec!(
+                { "skip"   | ignore(1)                  } >>
+                { "first"  | uint8                      } ::
+                { "junk"   | ignore(*junk_len as usize) } >>
+                { "second" | uint8                      } ::
+                { "third"  | uint8                      }
+            )}
         );
         
-        let input = hlist!(7u8, 3u8, 1u8);
-        let expected = byte_vector!(0xCA, 0xFE, 0x07, 0x00, 0x03, 0x01);
+        let input = hlist!(1u8, 3u8, 7u8, 3u8, 1u8);
+        let expected = byte_vector!(0xCA, 0xFE, 0x01, 0x03, 0x00, 0x07, 0x00, 0x00, 0x00, 0x03, 0x01);
         assert_round_trip_bytes(codec, &input, &Some(expected));
     }
 

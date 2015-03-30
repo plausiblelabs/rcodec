@@ -108,6 +108,9 @@ macro_rules! hcodec {
     { $head:block >> $($tail:tt)+ } => {
         drop_left($head, hcodec!($($tail)+))
     };
+    { $head:block >>= |$v:ident| $fnbody:block } => {
+        hlist_flat_prepend_codec($head, |$v| $fnbody)
+    };
 }
 
 /// Suppose we have a struct like this:
