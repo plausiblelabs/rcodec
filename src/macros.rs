@@ -90,12 +90,12 @@ macro_rules! byte_vector {
 /// For example:
 ///   hcodec!(
 ///       { constant(c) } >>
-///       { uint8()     } ::
-///       { uint8()     }
+///       { uint8       } ::
+///       { uint8       }
 ///   )
 ///
 /// translates to:
-///   drop_left(constant(c), hlist_prepend_codec(uint8(), hlist_prepend_codec(uint8(), hnil_codec())))
+///   drop_left(constant(c), hlist_prepend_codec(uint8, hlist_prepend_codec(uint8, hnil_codec)))
 ///
 /// which evaluates to:
 ///   Codec<HCons<u8, HCons<u8, HNil>>>
@@ -106,10 +106,10 @@ macro_rules! byte_vector {
 #[macro_export]
 macro_rules! hcodec {
     {} => {
-        hnil_codec()
+        hnil_codec
     };
     { $head:block } => {
-        hlist_prepend_codec($head, hnil_codec())
+        hlist_prepend_codec($head, hnil_codec)
     };
     { $head:block :: $($tail:tt)+ } => {
         hlist_prepend_codec($head, hcodec!($($tail)+))
@@ -130,7 +130,7 @@ macro_rules! hcodec {
 #[macro_export]
 macro_rules! struct_codec {
     { $stype:ident from $($hcodec:tt)+ } => {
-        { struct_codec::<_, $stype>(hcodec!($($hcodec)+)) }
+        { struct_codec::<_, $stype, _>(hcodec!($($hcodec)+)) }
     };
 }
 
