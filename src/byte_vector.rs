@@ -105,6 +105,9 @@ impl ByteVector {
             StorageType::Empty => {
                 Err(Error::new("Cannot create view for empty vector".to_string()))
             },
+            StorageType::DirectValue { .. } => {
+                Ok(Rc::new(StorageType::View { vstorage: (*storage).clone(), voffset: offset, vlen: len }))
+            },
             StorageType::Heap { .. } => {
                 // Create a new view around this heap storage
                 Ok(Rc::new(StorageType::View { vstorage: (*storage).clone(), voffset: offset, vlen: len }))
@@ -185,10 +188,14 @@ impl Debug for ByteVector {
     }
 }
 
+/// The maximum size that can be used with a DirectValue storage type.
+pub const DIRECT_VALUE_SIZE_LIMIT: usize = 8;
+
 /// A sum type over all supported storage object types.
 #[derive(Debug)]
 enum StorageType {
     Empty,
+    DirectValue { bytes: [u8; DIRECT_VALUE_SIZE_LIMIT], length: usize },
     Heap { bytes: Vec<u8> },
     Append { lhs: Rc<StorageType>, rhs: Rc<StorageType>, len: usize },
     // TODO: Note the 'v' prefix; I couldn't find a way to rename the variables while destructuring
@@ -201,6 +208,7 @@ impl StorageType {
     fn length(&self) -> usize {
         match *self {
             StorageType::Empty => 0,
+            StorageType::DirectValue { ref length, .. } => *length,
             StorageType::Heap { ref bytes } => bytes.len(),
             StorageType::Append { ref len, .. } => *len,
             StorageType::View { ref vlen, .. } => *vlen
@@ -228,6 +236,11 @@ impl StorageType {
         match *self {
             StorageType::Empty => {
                 Err(Error::new("Cannot read from empty vector".to_string()))
+            },
+            StorageType::DirectValue { ref bytes, ref length } => {
+                let count = std::cmp::min(len, *length - offset);
+                std::slice::bytes::copy_memory(buf, &bytes[offset .. offset + count]);
+                Ok(count)
             },
             StorageType::Heap { ref bytes } => {
                 let count = std::cmp::min(len, bytes.len() - offset);
@@ -302,7 +315,13 @@ pub fn empty() -> ByteVector {
 /// Return a byte vector that stores a copy of the given bytes on the heap.
 pub fn buffered(bytes: &Vec<u8>) -> ByteVector {
     // TODO: For now we only support copying, so that the returned ByteVector owns a copy
-    let storage = StorageType::Heap { bytes: bytes.clone() };
+    let storage = if bytes.len() <= DIRECT_VALUE_SIZE_LIMIT {
+        let mut array = [0u8; DIRECT_VALUE_SIZE_LIMIT];
+        std::slice::bytes::copy_memory(&mut array, bytes);
+        StorageType::DirectValue { bytes: array, length: bytes.len() }
+    } else {
+        StorageType::Heap { bytes: bytes.clone() }
+    };
     ByteVector { storage: Rc::new(storage) }
 }
 
@@ -373,6 +392,26 @@ mod tests {
 
         let expected = byte_vector!(1, 2, 3, 4, 1, 2, 3, 4);
         assert_eq!(bv, expected);
+    }
+    
+    #[test]
+    fn big_appends_should_work() {
+        let small = buffered(&vec![1; DIRECT_VALUE_SIZE_LIMIT]);
+        let big = buffered(&vec![2; DIRECT_VALUE_SIZE_LIMIT + 1]);
+        
+        let smallbig = append(&small, &big);
+        let mut smallbig_expected = vec![1; DIRECT_VALUE_SIZE_LIMIT];
+        smallbig_expected.extend(vec![2; DIRECT_VALUE_SIZE_LIMIT + 1]);
+        assert_eq!(smallbig, buffered(&smallbig_expected));
+        
+        let bigsmall = append(&big, &small);
+        let mut bigsmall_expected = vec![2; DIRECT_VALUE_SIZE_LIMIT + 1];
+        bigsmall_expected.extend(vec![1; DIRECT_VALUE_SIZE_LIMIT]);
+        assert_eq!(bigsmall, buffered(&bigsmall_expected));
+        
+        let bigbig = append(&big, &big);
+        let bigbig_expected = vec![2; DIRECT_VALUE_SIZE_LIMIT * 2 + 2];
+        assert_eq!(bigbig, buffered(&bigbig_expected));
     }
 
     #[test]
