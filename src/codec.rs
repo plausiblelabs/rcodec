@@ -415,10 +415,10 @@ impl<T> Codec<T> for ContextCodec<T> {
 
 /// Returns a new codec that encodes/decodes the unit value followed by the right-hand value,
 /// discarding the unit value when decoding.
-pub fn drop_left<T: 'static>(lhs: Box<Codec<()>>, rhs: Box<Codec<T>>) -> Box<Codec<T>> {
-    Box::new(DropLeftCodec { lhs: lhs, rhs: rhs })
+pub fn drop_left<T: 'static, LC: AsCodecRef<()>, RC: AsCodecRef<T>>(lhs: LC, rhs: RC) -> Box<Codec<T>> {
+    Box::new(DropLeftCodec { lhs: lhs.as_codec_ref(), rhs: rhs.as_codec_ref() })
 }
-struct DropLeftCodec<T> { lhs: Box<Codec<()>>, rhs: Box<Codec<T>> }
+struct DropLeftCodec<T: 'static> { lhs: CodecRef<()>, rhs: CodecRef<T> }
 impl<T> Codec<T> for DropLeftCodec<T> {
     fn encode(&self, value: &T) -> EncodeResult {
         self.lhs.encode(&()).and_then(|encoded_lhs| {
