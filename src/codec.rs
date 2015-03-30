@@ -370,6 +370,35 @@ impl<H, T: HList> Codec<HCons<H, T>> for HListPrependCodec<H, T> {
     }
 }
 
+/// Returns a new codec that first performs encoding/decoding of `T`, using the resulting value to produce
+/// codecs for the remaining types.
+///
+/// This allows later parts of an `HList` codec to be dependent on on earlier values.
+pub fn hlist_flat_prepend_codec<H: 'static, T: 'static + HList, HC: AsCodecRef<H>, F: 'static + Fn(&H) -> Box<Codec<T>>>(head_codec: HC, tail_codec_fn: F) -> Box<Codec<HCons<H, T>>> {
+    Box::new(HListFlatPrependCodec { head_codec: head_codec.as_codec_ref(), tail_codec_fn: Box::new(tail_codec_fn) })
+}
+struct HListFlatPrependCodec<H: 'static, T: 'static + HList, F: Fn(&H) -> Box<Codec<T>>> { head_codec: CodecRef<H>, tail_codec_fn: Box<F> }
+impl<H, T: HList, F: Fn(&H) -> Box<Codec<T>>> Codec<HCons<H, T>> for HListFlatPrependCodec<H, T, F> {
+    fn encode(&self, value: &HCons<H, T>) -> EncodeResult {
+        // TODO: Generalize this as an encode_both() function
+        forcomp!({
+            encoded_head <- self.head_codec.encode(&value.head());
+            encoded_tail <- (*self.tail_codec_fn)(&value.head()).encode(&value.tail());
+        } yield {
+            byte_vector::append(&encoded_head, &encoded_tail)
+        })
+    }
+
+    fn decode(&self, bv: &ByteVector) -> DecodeResult<HCons<H, T>> {
+        forcomp!({
+            decoded_head <- self.head_codec.decode(&bv);
+            decoded_tail <- (*self.tail_codec_fn)(&decoded_head.value).decode(&decoded_head.remainder);
+        } yield {
+            DecoderResult { value: HCons(decoded_head.value, decoded_tail.value), remainder: decoded_tail.remainder }
+        })
+    }
+}
+
 /// Trait implemented by structs created by the record_struct! macro.
 pub trait AsHList<T> {
     fn from_hlist(hlist: &T) -> Self;
@@ -753,6 +782,14 @@ mod tests {
 
         let codec2 = hlist_prepend_codec(uint8, hlist_prepend_codec(uint8, hnil_codec));
         assert_round_trip_bytes(codec2, &hlist!(7u8, 3u8), &Some(byte_vector!(7, 3)));
+    }
+
+    #[test]
+    fn an_hlist_flat_prepend_codec_should_round_trip() {
+        let codec = hlist_flat_prepend_codec(uint8, |header| {
+            hcodec!({bytes((*header) as usize)} :: {uint16})
+        });
+        assert_round_trip_bytes(codec, &hlist!(0x02u8, byte_vector!(0xAB, 0xCD), 0xCAFEu16), &Some(byte_vector!(0x02, 0xAB, 0xCD, 0xCA, 0xFE)));
     }
 
     #[test]
