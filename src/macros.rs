@@ -7,6 +7,43 @@
 //
 
 //
+// Scala-style for/yield macros
+//
+
+/// Scala-like for-comprehension macro.
+///
+/// Example:
+///
+///   forcomp!({
+///     foo <- Some(1u8);
+///     bar <- None;
+///   } yield { foo + bar });
+///
+/// expands to:
+///
+///   Some(1u8).and_then(|foo| {
+///     None.map(|bar| {
+///       foo + bar
+///     })
+///   })
+macro_rules! forcomp {
+    { { $($v:ident <- $e:expr;)+ } yield $yld:block } => {
+        forcomp_stmts!($yld, $($v, $e),+)
+    };
+}
+
+macro_rules! forcomp_stmts {
+    { $yld:block, $v:ident, $e:expr } => {
+        $e.map(move |$v| $yld)
+    };
+    { $yld:block, $v:ident, $e:expr, $($tv:ident, $te:expr),+ } => {
+        $e.and_then(move |$v| {
+            forcomp_stmts!($yld, $($tv, $te),+)
+        })
+    };
+}
+
+//
 // HList-related macros
 //
 

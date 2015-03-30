@@ -281,10 +281,11 @@ impl<T> Codec<T> for FixedSizeCodec<T> {
     fn decode(&self, bv: &ByteVector) -> DecodeResult<T> {
         // Give `len` bytes to the decoder; if successful, return the result along with
         // the remainder of `bv` after dropping `len` bytes from it
-        bv.take(self.len).and_then(|taken| {
-            self.codec.decode(&taken).map(|decoded| {
-                DecoderResult { value: decoded.value, remainder: bv.drop(self.len).unwrap() }
-            })
+        forcomp!({
+            taken <- bv.take(self.len);
+            decoded <- self.codec.decode(&taken);
+        } yield {
+            DecoderResult { value: decoded.value, remainder: bv.drop(self.len).unwrap() }
         })
     }
 }
@@ -315,14 +316,16 @@ impl<L: Int + ToPrimitive + FromPrimitive + Display, V> Codec<V> for VariableSiz
 
     fn decode(&self, bv: &ByteVector) -> DecodeResult<V> {
         // Decode the length, then decode the value
-        self.len_codec.decode(&bv).and_then(|decoded_len| {
-            // TODO: Ideally we'd just use fixed_size_bytes() here, but not sure how to transfer ownership of val_decoder
-            let len = decoded_len.value.to_usize().unwrap();
-            decoded_len.remainder.take(len).and_then(|taken| {
-                self.val_codec.decode(&taken).map(|decoded| {
-                    DecoderResult { value: decoded.value, remainder: bv.drop(len).unwrap() }
-                })
-            })
+        forcomp!({
+            decoded_len <- self.len_codec.decode(&bv);
+            remainder <- {
+                // TODO: Ideally we'd just use fixed_size_bytes() here, but not sure how to transfer ownership of val_decoder
+                let len = decoded_len.value.to_usize().unwrap();
+                decoded_len.remainder.take(len)
+            };
+            decoded_val <- self.val_codec.decode(&remainder);
+        } yield {
+            DecoderResult { value: decoded_val.value, remainder: bv.drop(remainder.length()).unwrap() }
         })
     }
 }
@@ -341,24 +344,28 @@ impl Codec<HNil> for HNilCodec {
 }
 
 /// Codec used to convert an HList of codecs into a single codec that encodes/decodes an HList of values.
-pub fn hlist_prepend_codec<A: 'static, L: 'static + HList, AC: AsCodecRef<A>, LC: AsCodecRef<L>>(a_codec: AC, l_codec: LC) -> Box<Codec<HCons<A, L>>> {
-    Box::new(HListPrependCodec { a_codec: a_codec.as_codec_ref(), l_codec: l_codec.as_codec_ref() })
+pub fn hlist_prepend_codec<H: 'static, T: 'static + HList, HC: AsCodecRef<H>, TC: AsCodecRef<T>>(head_codec: HC, tail_codec: TC) -> Box<Codec<HCons<H, T>>> {
+    Box::new(HListPrependCodec { head_codec: head_codec.as_codec_ref(), tail_codec: tail_codec.as_codec_ref() })
 }
-struct HListPrependCodec<A: 'static, L: 'static + HList> { a_codec: CodecRef<A>, l_codec: CodecRef<L> }
-impl<A, L: HList> Codec<HCons<A, L>> for HListPrependCodec<A, L> {
-    fn encode(&self, value: &HCons<A, L>) -> EncodeResult {
+struct HListPrependCodec<H: 'static, T: 'static + HList> { head_codec: CodecRef<H>, tail_codec: CodecRef<T> }
+impl<H, T: HList> Codec<HCons<H, T>> for HListPrependCodec<H, T> {
+    fn encode(&self, value: &HCons<H, T>) -> EncodeResult {
         // TODO: Generalize this as an encode_both() function
-        self.a_codec.encode(&value.0).and_then(|encoded_a| {
-            self.l_codec.encode(&value.1).map(|encoded_l| byte_vector::append(&encoded_a, &encoded_l))
+        forcomp!({
+            encoded_head <- self.head_codec.encode(&value.head());
+            encoded_tail <- self.tail_codec.encode(&value.tail());
+        } yield {
+            byte_vector::append(&encoded_head, &encoded_tail)
         })
     }
 
-    fn decode(&self, bv: &ByteVector) -> DecodeResult<HCons<A, L>> {
+    fn decode(&self, bv: &ByteVector) -> DecodeResult<HCons<H, T>> {
         // TODO: Generalize this as a decode_both_combine() function
-        self.a_codec.decode(&bv).and_then(|decoded_a| {
-            self.l_codec.decode(&decoded_a.remainder).map(move |decoded_l| {
-                DecoderResult { value: HCons(decoded_a.value, decoded_l.value), remainder: decoded_l.remainder }
-            })
+        forcomp!({
+            decoded_head <- self.head_codec.decode(&bv);
+            decoded_tail <- self.tail_codec.decode(&decoded_head.remainder);
+        } yield {
+            DecoderResult { value: HCons(decoded_head.value, decoded_tail.value), remainder: decoded_tail.remainder }
         })
     }
 }
@@ -425,10 +432,11 @@ pub fn drop_left<T: 'static, LC: AsCodecRef<()>, RC: AsCodecRef<T>>(lhs: LC, rhs
 struct DropLeftCodec<T: 'static> { lhs: CodecRef<()>, rhs: CodecRef<T> }
 impl<T> Codec<T> for DropLeftCodec<T> {
     fn encode(&self, value: &T) -> EncodeResult {
-        self.lhs.encode(&()).and_then(|encoded_lhs| {
-            self.rhs.encode(value).map(|encoded_rhs| {
-                byte_vector::append(&encoded_lhs, &encoded_rhs)
-            })
+        forcomp!({
+            encoded_lhs <- self.lhs.encode(&());
+            encoded_rhs <- self.rhs.encode(value);
+        } yield {
+            byte_vector::append(&encoded_lhs, &encoded_rhs)
         })
     }
 
@@ -448,6 +456,26 @@ mod tests {
     use byte_vector::ByteVector;
     use hlist::*;
 
+    #[test]
+    fn forcomp_macro_should_work() {
+        let v1 = forcomp!({
+            foo <- Some(1u8);
+        } yield { foo });
+        assert!(v1.is_some());
+
+        let v2 = forcomp!({
+            foo <- Some(1u8);
+            bar <- None;
+        } yield { foo + bar });
+        assert!(v2.is_none());
+
+        let v3 = forcomp!({
+            foo <- Some(1u8);
+            bar <- Some(2u8);
+        } yield { foo + bar });
+        assert_eq!(v3.unwrap(), 3u8);
+    }
+    
     fn assert_round_trip_bytes<T: 'static + Eq + Debug, C: AsCodecRef<T>>(c: C, value: &T, raw_bytes: &Option<ByteVector>) {
         // Encode
         let codec = c.as_codec_ref();

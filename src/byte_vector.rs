@@ -128,10 +128,11 @@ impl ByteVector {
                     // Create a new Append that spans portions of lhs and rhs
                     let lhs_view_len = lhs_len - offset;
                     let rhs_view_len = len - lhs_view_len;
-                    ByteVector::view(&lhs, offset, lhs_view_len).and_then(|lhs_view| {
-                        ByteVector::view(&rhs, 0, rhs_view_len).map(|rhs_view| {
-                            Rc::new(StorageType::Append { lhs: lhs_view, rhs: rhs_view, len: lhs_view_len + rhs_view_len })
-                        })
+                    forcomp!({
+                        lhs_view <- ByteVector::view(&lhs, offset, lhs_view_len);
+                        rhs_view <- ByteVector::view(&rhs, 0, rhs_view_len);
+                    } yield {
+                        Rc::new(StorageType::Append { lhs: lhs_view, rhs: rhs_view, len: lhs_view_len + rhs_view_len })
                     })
                 }
             },
