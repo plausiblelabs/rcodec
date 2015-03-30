@@ -40,12 +40,13 @@ pub struct DecoderResult<T> {
 /// A result type returned by Decoder operations.
 pub type DecodeResult<T> = Result<DecoderResult<T>, Error>;
 
-/// TODO: Document
+/// A reference to a Codec.
 pub enum CodecRef<T: 'static> {
+    /// An owned reference to a Codec that lives on the heap.
     Owned(Box<Codec<T>>),
+    /// A reference to a static Codec instance.
     Static(&'static Codec<T>)
 }
-
 impl<T: 'static> Codec<T> for CodecRef<T> {
     fn encode(&self, value: &T) -> EncodeResult {
         match *self {
@@ -62,19 +63,19 @@ impl<T: 'static> Codec<T> for CodecRef<T> {
     }
 }
 
+/// Trait that enables limited function overloading, so that functions that accept one or more Codecs can
+/// accept them as either a boxed value (Box<Codec<T>>) or a static reference (&'static Codec<T>).
 pub trait AsCodecRef<T> {
     fn as_codec_ref(self) -> CodecRef<T>;
 }
-
-impl<T> AsCodecRef<T> for &'static Codec<T> {
-    fn as_codec_ref(self) -> CodecRef<T> {
-        CodecRef::Static(self)
-    }
-}
-
 impl<T> AsCodecRef<T> for Box<Codec<T>> {
     fn as_codec_ref(self) -> CodecRef<T> {
         CodecRef::Owned(self)
+    }
+}
+impl<T> AsCodecRef<T> for &'static Codec<T> {
+    fn as_codec_ref(self) -> CodecRef<T> {
+        CodecRef::Static(self)
     }
 }
 
@@ -387,19 +388,22 @@ impl<H, S: AsHList<H>> Codec<S> for RecordStructCodec<H> {
 
 /// Override for the '|' operator that creates a new codec that injects additional context (e.g. in error messages)
 /// into the codec on the right-hand side.
-// TODO: Can we have a single impl that works on AsCodecRef<T>?
+// TODO: Can we have a single impl that works on AsCodecRef<T>?  Attempts so far like this:
+//   impl<T: 'static, TC: AsCodecRef<T>> core::ops::BitOr<TC> for &'static str {
+// have resulted in:
+//   error: the type parameter `T` is not constrained by the impl trait, self type, or predicates [E0207]
 impl<T: 'static> core::ops::BitOr<Box<Codec<T>>> for &'static str {
     type Output = Box<Codec<T>>;
 
     fn bitor(self, rhs: Box<Codec<T>>) -> Box<Codec<T>> {
-        Box::new(ContextCodec { codec: CodecRef::Owned(rhs), context: self })
+        Box::new(ContextCodec { codec: rhs.as_codec_ref(), context: self })
     }
 }
 impl<T: 'static> core::ops::BitOr<&'static Codec<T>> for &'static str {
     type Output = Box<Codec<T>>;
 
     fn bitor(self, rhs: &'static Codec<T>) -> Box<Codec<T>> {
-        Box::new(ContextCodec { codec: CodecRef::Static(rhs), context: self })
+        Box::new(ContextCodec { codec: rhs.as_codec_ref(), context: self })
     }
 }
 struct ContextCodec<T: 'static> { codec: CodecRef<T>, context: &'static str }
