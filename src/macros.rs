@@ -135,26 +135,27 @@ macro_rules! record_struct_with_hlist_type {
     // instead of just generating it from the list of field types.  We provide the record_struct! compiler
     // plugin as a more convenient frontend to this macro, since it can take care of building the HList type.
     { $stype:ident, $hlisttype:ty, $($fieldname:ident: $fieldtype:ty),+ } => {
-        #[derive(Debug, PartialEq, Eq)]
+        #[derive(Debug, PartialEq, Eq, Clone)]
         pub struct $stype {
             $($fieldname: $fieldtype),+
         }
 
         #[allow(dead_code)]
         impl AsHList<$hlisttype> for $stype {
-            fn from_hlist(hlist: &$hlisttype) -> Self {
-                match *hlist {
+            fn from_hlist(hlist: $hlisttype) -> Self {
+                match hlist {
                     record_struct_hlist_pattern!($($fieldname),+) => $stype { $($fieldname: $fieldname),+ }
                 }
             }
             
             fn to_hlist(&self) -> $hlisttype {
-                hlist!($(self.$fieldname),+)
+                hlist!($(self.$fieldname.clone()),+)
             }
         }
     };
 }
 
+#[macro_export]
 macro_rules! record_struct_hlist_pattern {
     { $head:ident } => {
         $crate::hlist::HCons($head, $crate::hlist::HNil)

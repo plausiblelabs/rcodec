@@ -401,7 +401,7 @@ impl<H, T: HList, F: Fn(&H) -> Box<Codec<T>>> Codec<HCons<H, T>> for HListFlatPr
 
 /// Trait implemented by structs created by the record_struct! macro.
 pub trait AsHList<T> {
-    fn from_hlist(hlist: &T) -> Self;
+    fn from_hlist(hlist: T) -> Self;
     fn to_hlist(&self) -> T;
 }
 
@@ -417,7 +417,7 @@ impl<H, S: AsHList<H>> Codec<S> for RecordStructCodec<H> {
 
     fn decode(&self, bv: &ByteVector) -> DecodeResult<S> {
         self.hlist_codec.decode(bv).map(|decoded| {
-            DecoderResult { value: S::from_hlist(&decoded.value), remainder: decoded.remainder }
+            DecoderResult { value: S::from_hlist(decoded.value), remainder: decoded.remainder }
         })
     }
 }
@@ -834,9 +834,8 @@ mod tests {
 
     #[test]
     fn record_structs_should_work() {
-        let hlist = hlist!(7u8, 3u8);
-        let s1 = TestStruct1::from_hlist(&hlist);
-        let s2 = TestStruct2::from_hlist(&hlist);
+        let s1 = TestStruct1::from_hlist(hlist!(7u8, 3u8));
+        let s2 = TestStruct2::from_hlist(hlist!(7u8, 3u8));
         assert_eq!(s1.foo, s2.foo);
         assert_eq!(s1.bar, s2.bar);
     }
