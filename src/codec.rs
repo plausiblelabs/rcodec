@@ -10,6 +10,7 @@ use std::fmt::Display;
 use std::mem::size_of;
 use std::num;
 use std::num::{Int, FromPrimitive, ToPrimitive};
+use std::rc::Rc;
 use std::vec;
 use core;
 
@@ -40,25 +41,39 @@ pub struct DecoderResult<T> {
 /// A result type returned by Decoder operations.
 pub type DecodeResult<T> = Result<DecoderResult<T>, Error>;
 
+/// Alias for a reference-counted Codec that lives on the heap.  All codec-generating functions return
+/// a reference-counted Codec to make it easier for higher-level codecs to share lower-level codec
+/// implementations without unnecessary duplication.
+// TODO: We shouldn't need the extra Box here once the following issue is fixed:
+//   https://github.com/rust-lang/rust/issues/18248
+pub type RcCodec<T> = Rc<Box<Codec<T>>>;
+
+/// Shorthand for creating an Rc<Box<T>>.
+macro_rules! rcbox {
+    { $c:expr } => {
+        Rc::new(Box::new($c))
+    };
+}
+
 /// A reference to a Codec.
 pub enum CodecRef<T: 'static> {
-    /// An owned reference to a Codec that lives on the heap.
-    Owned(Box<Codec<T>>),
     /// A reference to a static Codec instance.
-    Static(&'static Codec<T>)
+    Static(&'static Codec<T>),
+    /// A reference-counted Codec that lives on the heap.
+    Counted(RcCodec<T>)
 }
 impl<T: 'static> Codec<T> for CodecRef<T> {
     fn encode(&self, value: &T) -> EncodeResult {
         match *self {
-            CodecRef::Owned(ref c) => c.encode(value),
-            CodecRef::Static(ref c) => c.encode(value)
+            CodecRef::Static(ref c) => c.encode(value),
+            CodecRef::Counted(ref c) => (**c).encode(value)
         }
     }
 
     fn decode(&self, bv: &ByteVector) -> DecodeResult<T> {
         match *self {
-            CodecRef::Owned(ref c) => c.decode(bv),
-            CodecRef::Static(ref c) => c.decode(bv)
+            CodecRef::Static(ref c) => c.decode(bv),
+            CodecRef::Counted(ref c) => (**c).decode(bv)
         }
     }
 }
@@ -68,14 +83,14 @@ impl<T: 'static> Codec<T> for CodecRef<T> {
 pub trait AsCodecRef<T> {
     fn as_codec_ref(self) -> CodecRef<T>;
 }
-impl<T> AsCodecRef<T> for Box<Codec<T>> {
-    fn as_codec_ref(self) -> CodecRef<T> {
-        CodecRef::Owned(self)
-    }
-}
 impl<T> AsCodecRef<T> for &'static Codec<T> {
     fn as_codec_ref(self) -> CodecRef<T> {
         CodecRef::Static(self)
+    }
+}
+impl<T> AsCodecRef<T> for RcCodec<T> {
+    fn as_codec_ref(self) -> CodecRef<T> {
+        CodecRef::Counted(self.clone())
     }
 }
 
@@ -195,8 +210,8 @@ impl<T: Int + FromPrimitive> Codec<T> for IntegralCodec {
 }
 
 /// Codec that encodes `len` low bytes and decodes by discarding `len` bytes.
-pub fn ignore(len: usize) -> Box<Codec<()>> {
-    Box::new(IgnoreCodec { len: len })
+pub fn ignore(len: usize) -> RcCodec<()> {
+    rcbox!(IgnoreCodec { len: len })
 }
 struct IgnoreCodec { len: usize }
 impl Codec<()> for IgnoreCodec {
@@ -213,8 +228,8 @@ impl Codec<()> for IgnoreCodec {
 
 /// Codec that always encodes the given byte vector, and decodes by returning a unit result if the actual bytes match
 /// the given byte vector or an error otherwise.
-pub fn constant(bytes: &ByteVector) -> Box<Codec<()>> {
-    Box::new(ConstantCodec { bytes: (*bytes).clone() })
+pub fn constant(bytes: &ByteVector) -> RcCodec<()> {
+    rcbox!(ConstantCodec { bytes: (*bytes).clone() })
 }
 struct ConstantCodec { bytes: ByteVector }
 impl Codec<()> for ConstantCodec {
@@ -251,7 +266,7 @@ impl Codec<ByteVector> for IdentityCodec {
 /// Byte vector codec.
 ///   - Encodes by returning the given byte vector if its length is `len` bytes, otherwise returns an error.
 ///   - Decodes by taking `len` bytes from the given byte vector.
-pub fn bytes(len: usize) -> Box<Codec<ByteVector>> {
+pub fn bytes(len: usize) -> RcCodec<ByteVector> {
     fixed_size_bytes(len, identity_bytes)
 }
 
@@ -263,8 +278,8 @@ pub fn bytes(len: usize) -> Box<Codec<ByteVector>> {
 ///
 /// When decoding, the given `codec` is only given `len` bytes.  If `codec` does
 /// not consume all `len` bytes, any remaining bytes are discarded.
-pub fn fixed_size_bytes<T: 'static, TC: AsCodecRef<T>>(len: usize, codec: TC) -> Box<Codec<T>> {
-    Box::new(FixedSizeCodec { len: len, codec: codec.as_codec_ref() })
+pub fn fixed_size_bytes<T: 'static, TC: AsCodecRef<T>>(len: usize, codec: TC) -> RcCodec<T> {
+    rcbox!(FixedSizeCodec { len: len, codec: codec.as_codec_ref() })
 }
 struct FixedSizeCodec<T: 'static> { len: usize, codec: CodecRef<T> }
 impl<T> Codec<T> for FixedSizeCodec<T> {
@@ -293,8 +308,8 @@ impl<T> Codec<T> for FixedSizeCodec<T> {
 /// Codec for length-delimited values.
 ///   - Encodes by encoding the length (in bytes) of the value followed by the value itself.
 ///   - Decodes by decoding the length and then attempting to decode the value that follows.
-pub fn variable_size_bytes<L: 'static + Int + ToPrimitive + FromPrimitive + Display, V: 'static, LC: AsCodecRef<L>, VC: AsCodecRef<V>>(len_codec: LC, val_codec: VC) -> Box<Codec<V>> {
-    Box::new(VariableSizeCodec { len_codec: len_codec.as_codec_ref(), val_codec: val_codec.as_codec_ref() })
+pub fn variable_size_bytes<L: 'static + Int + ToPrimitive + FromPrimitive + Display, V: 'static, LC: AsCodecRef<L>, VC: AsCodecRef<V>>(len_codec: LC, val_codec: VC) -> RcCodec<V> {
+    rcbox!(VariableSizeCodec { len_codec: len_codec.as_codec_ref(), val_codec: val_codec.as_codec_ref() })
 }
 struct VariableSizeCodec<L: 'static + Int + ToPrimitive + FromPrimitive + Display, V: 'static> { len_codec: CodecRef<L>, val_codec: CodecRef<V> }
 impl<L: Int + ToPrimitive + FromPrimitive + Display, V> Codec<V> for VariableSizeCodec<L, V> {
@@ -344,8 +359,8 @@ impl Codec<HNil> for HNilCodec {
 }
 
 /// Codec used to convert an HList of codecs into a single codec that encodes/decodes an HList of values.
-pub fn hlist_prepend_codec<H: 'static, T: 'static + HList, HC: AsCodecRef<H>, TC: AsCodecRef<T>>(head_codec: HC, tail_codec: TC) -> Box<Codec<HCons<H, T>>> {
-    Box::new(HListPrependCodec { head_codec: head_codec.as_codec_ref(), tail_codec: tail_codec.as_codec_ref() })
+pub fn hlist_prepend_codec<H: 'static, T: 'static + HList, HC: AsCodecRef<H>, TC: AsCodecRef<T>>(head_codec: HC, tail_codec: TC) -> RcCodec<HCons<H, T>> {
+    rcbox!(HListPrependCodec { head_codec: head_codec.as_codec_ref(), tail_codec: tail_codec.as_codec_ref() })
 }
 struct HListPrependCodec<H: 'static, T: 'static + HList> { head_codec: CodecRef<H>, tail_codec: CodecRef<T> }
 impl<H, T: HList> Codec<HCons<H, T>> for HListPrependCodec<H, T> {
@@ -374,11 +389,11 @@ impl<H, T: HList> Codec<HCons<H, T>> for HListPrependCodec<H, T> {
 /// codecs for the remaining types.
 ///
 /// This allows later parts of an `HList` codec to be dependent on on earlier values.
-pub fn hlist_flat_prepend_codec<H: 'static, T: 'static + HList, HC: AsCodecRef<H>, F: 'static + Fn(&H) -> Box<Codec<T>>>(head_codec: HC, tail_codec_fn: F) -> Box<Codec<HCons<H, T>>> {
-    Box::new(HListFlatPrependCodec { head_codec: head_codec.as_codec_ref(), tail_codec_fn: Box::new(tail_codec_fn) })
+pub fn hlist_flat_prepend_codec<H: 'static, T: 'static + HList, HC: AsCodecRef<H>, F: 'static + Fn(&H) -> RcCodec<T>>(head_codec: HC, tail_codec_fn: F) -> RcCodec<HCons<H, T>> {
+    rcbox!(HListFlatPrependCodec { head_codec: head_codec.as_codec_ref(), tail_codec_fn: Box::new(tail_codec_fn) })
 }
-struct HListFlatPrependCodec<H: 'static, T: 'static + HList, F: Fn(&H) -> Box<Codec<T>>> { head_codec: CodecRef<H>, tail_codec_fn: Box<F> }
-impl<H, T: HList, F: Fn(&H) -> Box<Codec<T>>> Codec<HCons<H, T>> for HListFlatPrependCodec<H, T, F> {
+struct HListFlatPrependCodec<H: 'static, T: 'static + HList, F: Fn(&H) -> RcCodec<T>> { head_codec: CodecRef<H>, tail_codec_fn: Box<F> }
+impl<H, T: HList, F: Fn(&H) -> RcCodec<T>> Codec<HCons<H, T>> for HListFlatPrependCodec<H, T, F> {
     fn encode(&self, value: &HCons<H, T>) -> EncodeResult {
         // TODO: Generalize this as an encode_both() function
         forcomp!({
@@ -406,8 +421,8 @@ pub trait AsHList<T> {
 }
 
 /// Codec for structs created by the record_struct! macro.
-pub fn struct_codec<H: 'static, S: AsHList<H>, HC: AsCodecRef<H>>(hlist_codec: HC) -> Box<Codec<S>> {
-    Box::new(RecordStructCodec { hlist_codec: hlist_codec.as_codec_ref() })
+pub fn struct_codec<H: 'static, S: AsHList<H>, HC: AsCodecRef<H>>(hlist_codec: HC) -> RcCodec<S> {
+    rcbox!(RecordStructCodec { hlist_codec: hlist_codec.as_codec_ref() })
 }
 struct RecordStructCodec<H: 'static> { hlist_codec: CodecRef<H> }
 impl<H, S: AsHList<H>> Codec<S> for RecordStructCodec<H> {
@@ -428,18 +443,18 @@ impl<H, S: AsHList<H>> Codec<S> for RecordStructCodec<H> {
 //   impl<T: 'static, TC: AsCodecRef<T>> core::ops::BitOr<TC> for &'static str {
 // have resulted in:
 //   error: the type parameter `T` is not constrained by the impl trait, self type, or predicates [E0207]
-impl<T: 'static> core::ops::BitOr<Box<Codec<T>>> for &'static str {
-    type Output = Box<Codec<T>>;
+impl<T: 'static> core::ops::BitOr<&'static Codec<T>> for &'static str {
+    type Output = RcCodec<T>;
 
-    fn bitor(self, rhs: Box<Codec<T>>) -> Box<Codec<T>> {
-        Box::new(ContextCodec { codec: rhs.as_codec_ref(), context: self })
+    fn bitor(self, rhs: &'static Codec<T>) -> RcCodec<T> {
+        rcbox!(ContextCodec { codec: rhs.as_codec_ref(), context: self })
     }
 }
-impl<T: 'static> core::ops::BitOr<&'static Codec<T>> for &'static str {
-    type Output = Box<Codec<T>>;
+impl<T: 'static> core::ops::BitOr<RcCodec<T>> for &'static str {
+    type Output = RcCodec<T>;
 
-    fn bitor(self, rhs: &'static Codec<T>) -> Box<Codec<T>> {
-        Box::new(ContextCodec { codec: rhs.as_codec_ref(), context: self })
+    fn bitor(self, rhs: RcCodec<T>) -> RcCodec<T> {
+        rcbox!(ContextCodec { codec: rhs.as_codec_ref(), context: self })
     }
 }
 struct ContextCodec<T: 'static> { codec: CodecRef<T>, context: &'static str }
@@ -455,8 +470,8 @@ impl<T> Codec<T> for ContextCodec<T> {
 
 /// Returns a new codec that encodes/decodes the unit value followed by the right-hand value,
 /// discarding the unit value when decoding.
-pub fn drop_left<T: 'static, LC: AsCodecRef<()>, RC: AsCodecRef<T>>(lhs: LC, rhs: RC) -> Box<Codec<T>> {
-    Box::new(DropLeftCodec { lhs: lhs.as_codec_ref(), rhs: rhs.as_codec_ref() })
+pub fn drop_left<T: 'static, LC: AsCodecRef<()>, RC: AsCodecRef<T>>(lhs: LC, rhs: RC) -> RcCodec<T> {
+    rcbox!(DropLeftCodec { lhs: lhs.as_codec_ref(), rhs: rhs.as_codec_ref() })
 }
 struct DropLeftCodec<T: 'static> { lhs: CodecRef<()>, rhs: CodecRef<T> }
 impl<T> Codec<T> for DropLeftCodec<T> {
