@@ -314,22 +314,20 @@ impl StorageType {
             StorageType::File { ref file, ref length } => {
                 let count = std::cmp::min(*length, len);
                 let ref mut f = file.file.borrow_mut();
-                match f.seek(SeekFrom::Start(offset as u64)) {
-                    Err(why) => Err(Error::new(String::from_str(error::Error::description(&why)))),
-                    Ok(_) =>
-                        match f.read(&mut buf[0 .. count]) {
-                            Err(why) => Err(Error::new(String::from_str(error::Error::description(&why)))),
-                            Ok(bytes_read) =>
-                                if bytes_read < count {
-                                    match self.read(&mut buf[bytes_read .. len - bytes_read], offset + bytes_read, len - bytes_read) {
-                                        Err(err) => Err(err),
-                                        Ok(size) => Ok(size + bytes_read)
-                                    }
-                                } else {
-                                    Ok(bytes_read)
-                                }
-                        }
-                }
+
+                // Seek to `offset` and then read `count` bytes
+                let read_result = f.seek(SeekFrom::Start(offset as u64)).and_then(|_newpos| {
+                    f.read(&mut buf[0 .. count])
+                }).map_err(|io_err| Error::new(format!("Failed to read file: {}", error::Error::description(&io_err))));
+
+                // If the read was incomplete, keep reading recursively 
+                read_result.and_then(|bytes_read| {
+                    if bytes_read < count {
+                        self.read(&mut buf[bytes_read .. len - bytes_read], offset + bytes_read, len - bytes_read).map(|size| size + bytes_read)
+                    } else {
+                        Ok(bytes_read)
+                    }
+                })
             }
         }
     }
@@ -371,27 +369,25 @@ pub fn buffered(bytes: &Vec<u8>) -> ByteVector {
     ByteVector { storage: Rc::new(storage) }
 }
 
-/// Return a byte vector whose contents come from a file
+/// Return a byte vector whose contents come from a file.
 pub fn file(path: &Path) -> Result<ByteVector, Error> {
-    match File::open(path) {
-        Err(why) => Err(Error::new(String::from_str(error::Error::description(&why)))),
-        Ok(file) =>
-            match path.metadata() {
-                Err(why) => Err(Error::new(String::from_str(error::Error::description(&why)))),
-                Ok(metadata) => {
-                    let len = metadata.len();
-                    Ok(ByteVector {
-                        storage: Rc::new(StorageType::File {
-                            file: WrappedFile {
-                                file: RefCell::new(file)
-                            },
-                            length: len as usize
-                        })
-                    })
-                }
-            }
-    }
-    
+    // Open the file at the given path and create a ByteVector around it
+    let result = forcomp!({
+        file <- File::open(path);
+        metadata <- path.metadata();
+    } yield {
+        ByteVector {
+            storage: Rc::new(StorageType::File {
+                file: WrappedFile {
+                    file: RefCell::new(file)
+                },
+                length: metadata.len() as usize
+            })
+        }
+    });
+
+    // Wrap I/O error in an rcodec error, if needed
+    result.map_err(|io_err| Error::new(format!("Failed to open file: {}", error::Error::description(&io_err))))
 }
 
 /// Return a byte vector that contains the contents of lhs followed by the contents of rhs.
