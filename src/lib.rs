@@ -13,7 +13,7 @@
 #![feature(trace_macros)]
 
 // The following allows for using macros defined in the separate rcodec_macros crate.
-#![feature(plugin)]
+#![feature(plugin, custom_attribute)]
 #![plugin(rcodec_macros)]
 
 // The following is necessary to make exported macros visible.
