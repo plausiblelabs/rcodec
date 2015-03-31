@@ -16,6 +16,12 @@
 #![feature(plugin)]
 #![plugin(rcodec_macros)]
 
+// The following suppresses warnings related to unstable stuff used for file-backed ByteVectors.
+#![feature(collections)]
+#![feature(file_path)]
+#![feature(io)]
+#![feature(path_ext)]
+
 // The following is necessary to make exported macros visible.
 #[macro_use]
 pub mod macros;

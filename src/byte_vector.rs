@@ -6,8 +6,17 @@
 // Scala scodec library: https://github.com/scodec/scodec/
 //
 
+use core::error;
+use core::fmt;
 use std;
+use std::cell::RefCell;
 use std::fmt::{Debug, Formatter};
+use std::fs::File;
+use std::fs::PathExt;
+use std::io::Read;
+use std::io::Seek;
+use std::io::SeekFrom;
+use std::path::Path;
 use std::rc::Rc;
 use std::vec::Vec;
 
@@ -139,6 +148,9 @@ impl ByteVector {
             StorageType::View { ref voffset, .. } => {
                 // Create a new view around this view's underlying storage
                 Ok(Rc::new(StorageType::View { vstorage: storage.clone(), voffset: voffset + offset, vlen: len }))
+            },
+            StorageType::File { .. } => {
+                Ok(Rc::new(StorageType::View { vstorage: (*storage).clone(), voffset: offset, vlen: len }))
             }
         }
     }
@@ -189,6 +201,17 @@ impl Debug for ByteVector {
     }
 }
 
+// Wrapper around File that provides an implementation of Debug
+struct WrappedFile {
+    file: RefCell<File>
+}
+
+impl Debug for WrappedFile {
+    fn fmt(&self, formatter: &mut Formatter) -> Result<(), fmt::Error> {
+        self.file.borrow().path().unwrap().fmt(formatter)
+    }
+}
+
 /// The maximum size that can be used with a DirectValue storage type.
 pub const DIRECT_VALUE_SIZE_LIMIT: usize = 8;
 
@@ -201,7 +224,8 @@ enum StorageType {
     Append { lhs: Rc<StorageType>, rhs: Rc<StorageType>, len: usize },
     // TODO: Note the 'v' prefix; I couldn't find a way to rename the variables while destructuring
     // in a match, so this was the only way to avoid colliding with the offset/len function parameters
-    View { vstorage: Rc<StorageType>, voffset: usize, vlen: usize }
+    View { vstorage: Rc<StorageType>, voffset: usize, vlen: usize },
+    File { file: WrappedFile, length: usize }
 }
 
 impl StorageType {
@@ -212,7 +236,8 @@ impl StorageType {
             StorageType::DirectValue { ref length, .. } => *length,
             StorageType::Heap { ref bytes } => bytes.len(),
             StorageType::Append { ref len, .. } => *len,
-            StorageType::View { ref vlen, .. } => *vlen
+            StorageType::View { ref vlen, .. } => *vlen,
+            StorageType::File { ref length, .. } => *length
         }
     }
 
@@ -285,6 +310,26 @@ impl StorageType {
                 // Let the backing storage perform the read
                 let count = std::cmp::min(*vlen, len);
                 vstorage.read(buf, *voffset + offset, count)
+            },
+            StorageType::File { ref file, ref length } => {
+                let count = std::cmp::min(*length, len);
+                let ref mut f = file.file.borrow_mut();
+                match f.seek(SeekFrom::Start(offset as u64)) {
+                    Err(why) => Err(Error::new(String::from_str(error::Error::description(&why)))),
+                    Ok(_) =>
+                        match f.read(&mut buf[0 .. count]) {
+                            Err(why) => Err(Error::new(String::from_str(error::Error::description(&why)))),
+                            Ok(bytes_read) =>
+                                if bytes_read < count {
+                                    match self.read(&mut buf[bytes_read .. len - bytes_read], offset + bytes_read, len - bytes_read) {
+                                        Err(err) => Err(err),
+                                        Ok(size) => Ok(size + bytes_read)
+                                    }
+                                } else {
+                                    Ok(bytes_read)
+                                }
+                        }
+                }
             }
         }
     }
@@ -326,6 +371,29 @@ pub fn buffered(bytes: &Vec<u8>) -> ByteVector {
     ByteVector { storage: Rc::new(storage) }
 }
 
+/// Return a byte vector whose contents come from a file
+pub fn file(path: &Path) -> Result<ByteVector, Error> {
+    match File::open(path) {
+        Err(why) => Err(Error::new(String::from_str(error::Error::description(&why)))),
+        Ok(file) =>
+            match path.metadata() {
+                Err(why) => Err(Error::new(String::from_str(error::Error::description(&why)))),
+                Ok(metadata) => {
+                    let len = metadata.len();
+                    Ok(ByteVector {
+                        storage: Rc::new(StorageType::File {
+                            file: WrappedFile {
+                                file: RefCell::new(file)
+                            },
+                            length: len as usize
+                        })
+                    })
+                }
+            }
+    }
+    
+}
+
 /// Return a byte vector that contains the contents of lhs followed by the contents of rhs.
 pub fn append(lhs: &ByteVector, rhs: &ByteVector) -> ByteVector {
     if lhs.length() == 0 && rhs.length() == 0 {
@@ -349,6 +417,7 @@ pub fn fill(value: u8, count: usize) -> ByteVector {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     #[test]
     fn byte_vector_macro_should_work() {
@@ -585,5 +654,34 @@ mod tests {
     fn pad_right_should_fail_if_length_is_invalid() {
         let bv = byte_vector!(1, 2, 3, 4);
         assert_eq!(bv.pad_right(3).unwrap_err().message(), "Requested padded length of 3 bytes is smaller than vector length of 4");
+    }
+    
+    #[test]
+    fn file_should_work() {
+        use std::error::Error;
+        use std::io::Write;
+        use std::path::Path;
+        let path = Path::new("/tmp/rcodec-test-file");
+        
+        let contents = [1u8, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        let mut write_file = match fs::File::create(path) {
+            Err(why) => panic!("Couldn't create test file {:?}: {}", path.to_str(), Error::description(&why)),
+            Ok(file) => file
+        };
+        match write_file.write_all(&contents) {
+            Err(why) => panic!("Couldn't write test file {:?}: {}", path.to_str(), Error::description(&why)),
+            Ok(_) => ()
+        }
+        
+        let bv_result = file(path);
+        assert!(bv_result.is_ok());
+        let bv = bv_result.unwrap();
+        assert_eq!(bv, byte_vector!(1, 2, 3, 4, 5, 6, 7, 8, 9, 10));
+        
+        let dropped = bv.drop(5);
+        assert!(dropped.is_ok());
+        assert_eq!(dropped.unwrap(), byte_vector!(6, 7, 8, 9, 10));
+        
+        let _ignore = fs::remove_file(&path);
     }
 }
