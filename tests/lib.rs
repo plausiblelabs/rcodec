@@ -23,7 +23,7 @@ fn assert_round_trip_bytes<T: 'static + Eq + Debug, C: AsCodecRef<T>>(c: C, valu
         let compare_result = match *raw_bytes {
             Some(ref expected) => {
                 if encoded != *expected {
-                    Err(Error::new("Encoded bytes do not match expected bytes".to_string()))
+                    Err(Error::new(format!("Encoded bytes {:?} do not match expected bytes {:?}", encoded, *expected)))
                 } else {
                     Ok(())
                 }
@@ -41,7 +41,7 @@ fn assert_round_trip_bytes<T: 'static + Eq + Debug, C: AsCodecRef<T>>(c: C, valu
     // Verify result
     match result {
         Ok(decoded) => assert_eq!(decoded, *value),
-        Err(e) => panic!("Round-trip encoding failed: {:?}", e),
+        Err(e) => panic!("Round-trip encoding failed: {:?}", e.message()),
     }
 }
 
@@ -66,10 +66,21 @@ record_struct!(
     meta_section: TestSectionRecord,
     data_section: TestSectionRecord);
 
+// TODO: Oops, looks like the record_struct! macro can't handle generic types yet, so let's alias here to avoid brackets
+pub type VecU8 = Vec<u8>;
+
+record_struct!(
+    TestFileItem,
+    header: TestFileHeader,
+    metadata: VecU8,
+    data: VecU8);
+
 #[test]
 fn a_complex_codec_should_round_trip() {
-    let magic = byte_vector!(0xCA, 0xFE);
+    const FILE_HEADER_SIZE: u8 = 6;
     
+    let magic = byte_vector!(0xCA, 0xFE);
+
     let version_codec = struct_codec!(
         TestRecordVersion from
         { "compat_version"  | uint8  } ::
@@ -87,26 +98,50 @@ fn a_complex_codec_should_round_trip() {
         { "meta_section"    | section_codec.clone() } ::
         { "data_section"    | section_codec.clone() } );
 
+    let item_codec = struct_codec!(
+        TestFileItem from
+        { "header"          | header_codec } >>= |hdr| {
+            let padding_1_len = (hdr.meta_section.offset - FILE_HEADER_SIZE) as usize;
+            let metadata_len  = hdr.meta_section.length as usize;
+            let padding_2_len = (hdr.data_section.offset as usize) - ((hdr.meta_section.offset as usize) + metadata_len);
+            let data_len      = hdr.data_section.length as usize;
+            hcodec!(
+                { "padding_1"   | ignore(padding_1_len)      } >>
+                { "metadata"    | eager(bytes(metadata_len)) } ::
+                { "padding_2"   | ignore(padding_2_len)      } >>
+                { "data"        | eager(bytes(data_len))     } )
+        });
+    
     let header = TestFileHeader {
         version: TestRecordVersion {
             compat_version: 1,
             feature_version: 2
         },
         meta_section: TestSectionRecord {
-            offset: 0,
+            offset: FILE_HEADER_SIZE + 2,
             length: 2
         },
         data_section: TestSectionRecord {
-            offset: 2,
-            length: 3
+            offset: FILE_HEADER_SIZE + 6,
+            length: 2
         }
     };
+
+    let item = TestFileItem {
+        header: header,
+        metadata: vec!(1, 7),
+        data: vec!(6, 6)
+    };
     
-    assert_round_trip_bytes(header_codec, &header, &Some(
+    assert_round_trip_bytes(item_codec, &item, &Some(
         byte_vector!(
             0xCA, 0xFE, // magic
             0x01, 0x02, // file_version
-            0x00, 0x02, // meta_section
-            0x02, 0x03  // data_section
+            0x08, 0x02, // meta_section
+            0x0C, 0x02, // data_section
+            0x00, 0x00, // padding_1 (ignored)
+            0x01, 0x07, // metadata
+            0x00, 0x00, // padding_2 (ignored)
+            0x06, 0x06  // data
                 )));
 }
