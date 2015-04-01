@@ -15,7 +15,7 @@ use rcodec::byte_vector::ByteVector;
 use rcodec::codec::*;
 use rcodec::hlist::*;
 
-fn assert_round_trip_bytes<T: 'static + Eq + Debug, C: AsCodecRef<T>>(c: C, value: &T, raw_bytes: &Option<ByteVector>) {
+fn assert_round_trip<T: 'static + Eq + Debug, C: AsCodecRef<T>>(c: C, value: &T, raw_bytes: &Option<ByteVector>) {
     // Encode
     let codec = c.as_codec_ref();
     let result = codec.encode(value).and_then(|encoded| {
@@ -47,7 +47,7 @@ fn assert_round_trip_bytes<T: 'static + Eq + Debug, C: AsCodecRef<T>>(c: C, valu
 
 #[test]
 fn a_u8_value_should_round_trip() {
-    assert_round_trip_bytes(uint8, &7u8, &Some(byte_vector!(7)));
+    assert_round_trip(uint8, &7u8, &Some(byte_vector!(7)));
 }
 
 record_struct!(
@@ -133,7 +133,7 @@ fn a_complex_codec_should_round_trip() {
         data: vec!(6, 6)
     };
     
-    assert_round_trip_bytes(item_codec, &item, &Some(
+    assert_round_trip(item_codec, &item, &Some(
         byte_vector!(
             0xCA, 0xFE, // magic
             0x01, 0x02, // file_version

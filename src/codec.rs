@@ -542,7 +542,7 @@ mod tests {
         assert_eq!(v3.unwrap(), 3u8);
     }
     
-    fn assert_round_trip_bytes<T: 'static + Eq + Debug, C: AsCodecRef<T>>(c: C, value: &T, raw_bytes: &Option<ByteVector>) {
+    fn assert_round_trip<T: 'static + Eq + Debug, C: AsCodecRef<T>>(c: C, value: &T, raw_bytes: &Option<ByteVector>) {
         // Encode
         let codec = c.as_codec_ref();
         let result = codec.encode(value).and_then(|encoded| {
@@ -578,57 +578,57 @@ mod tests {
     
     #[test]
     fn a_u8_value_should_round_trip() {
-        assert_round_trip_bytes(uint8, &7, &Some(byte_vector!(7)));
+        assert_round_trip(uint8, &7, &Some(byte_vector!(7)));
     }
     
     #[test]
     fn an_i8_value_should_round_trip() {
-        assert_round_trip_bytes(int8, &7, &Some(byte_vector!(7)));
-        assert_round_trip_bytes(int8, &-2, &Some(byte_vector!(0xfe)));
-        assert_round_trip_bytes(int8, &-16, &Some(byte_vector!(0xf0)));
-        assert_round_trip_bytes(int8, &-128, &Some(byte_vector!(0x80)));
+        assert_round_trip(int8, &7, &Some(byte_vector!(7)));
+        assert_round_trip(int8, &-2, &Some(byte_vector!(0xfe)));
+        assert_round_trip(int8, &-16, &Some(byte_vector!(0xf0)));
+        assert_round_trip(int8, &-128, &Some(byte_vector!(0x80)));
     }
     
     #[test]
     fn a_u16_value_should_round_trip() {
-        assert_round_trip_bytes(uint16, &0x1234, &Some(byte_vector!(0x12, 0x34)));
-        assert_round_trip_bytes(uint16_l, &0x1234, &Some(byte_vector!(0x34, 0x12)));
+        assert_round_trip(uint16, &0x1234, &Some(byte_vector!(0x12, 0x34)));
+        assert_round_trip(uint16_l, &0x1234, &Some(byte_vector!(0x34, 0x12)));
     }
 
     #[test]
     fn an_i16_value_should_round_trip() {
-        assert_round_trip_bytes(int16, &0x1234, &Some(byte_vector!(0x12, 0x34)));
-        assert_round_trip_bytes(int16, &-2, &Some(byte_vector!(0xff, 0xfe)));
-        assert_round_trip_bytes(int16_l, &0x1234, &Some(byte_vector!(0x34, 0x12)));
-        assert_round_trip_bytes(int16_l, &-2, &Some(byte_vector!(0xfe, 0xff)));
+        assert_round_trip(int16, &0x1234, &Some(byte_vector!(0x12, 0x34)));
+        assert_round_trip(int16, &-2, &Some(byte_vector!(0xff, 0xfe)));
+        assert_round_trip(int16_l, &0x1234, &Some(byte_vector!(0x34, 0x12)));
+        assert_round_trip(int16_l, &-2, &Some(byte_vector!(0xfe, 0xff)));
     }
 
     #[test]
     fn a_u32_value_should_round_trip() {
-        assert_round_trip_bytes(uint32, &0x12345678, &Some(byte_vector!(0x12, 0x34, 0x56, 0x78)));
-        assert_round_trip_bytes(uint32_l, &0x12345678, &Some(byte_vector!(0x78, 0x56, 0x34, 0x12)));
+        assert_round_trip(uint32, &0x12345678, &Some(byte_vector!(0x12, 0x34, 0x56, 0x78)));
+        assert_round_trip(uint32_l, &0x12345678, &Some(byte_vector!(0x78, 0x56, 0x34, 0x12)));
     }
 
     #[test]
     fn an_i32_value_should_round_trip() {
-        assert_round_trip_bytes(uint32, &0x12345678, &Some(byte_vector!(0x12, 0x34, 0x56, 0x78)));
-        assert_round_trip_bytes(uint32, &-2, &Some(byte_vector!(0xff, 0xff, 0xff, 0xfe)));
-        assert_round_trip_bytes(uint32_l, &0x12345678, &Some(byte_vector!(0x78, 0x56, 0x34, 0x12)));
-        assert_round_trip_bytes(uint32_l, &-2, &Some(byte_vector!(0xfe, 0xff, 0xff, 0xff)));
+        assert_round_trip(uint32, &0x12345678, &Some(byte_vector!(0x12, 0x34, 0x56, 0x78)));
+        assert_round_trip(uint32, &-2, &Some(byte_vector!(0xff, 0xff, 0xff, 0xfe)));
+        assert_round_trip(uint32_l, &0x12345678, &Some(byte_vector!(0x78, 0x56, 0x34, 0x12)));
+        assert_round_trip(uint32_l, &-2, &Some(byte_vector!(0xfe, 0xff, 0xff, 0xff)));
     }
 
     #[test]
     fn a_u64_value_should_round_trip() {
-        assert_round_trip_bytes(uint64, &0x1234567890abcdef, &Some(byte_vector!(0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef)));
-        assert_round_trip_bytes(uint64_l, &0x1234567890abcdef, &Some(byte_vector!(0xef, 0xcd, 0xab, 0x90, 0x78, 0x56, 0x34, 0x12)));
+        assert_round_trip(uint64, &0x1234567890abcdef, &Some(byte_vector!(0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef)));
+        assert_round_trip(uint64_l, &0x1234567890abcdef, &Some(byte_vector!(0xef, 0xcd, 0xab, 0x90, 0x78, 0x56, 0x34, 0x12)));
     }
 
     #[test]
     fn an_i64_value_should_round_trip() {
-        assert_round_trip_bytes(int64, &0x1234567890abcdef, &Some(byte_vector!(0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef)));
-        assert_round_trip_bytes(int64, &-2, &Some(byte_vector!(0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe)));
-        assert_round_trip_bytes(int64_l, &0x1234567890abcdef, &Some(byte_vector!(0xef, 0xcd, 0xab, 0x90, 0x78, 0x56, 0x34, 0x12)));
-        assert_round_trip_bytes(int64_l, &-2, &Some(byte_vector!(0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff)));
+        assert_round_trip(int64, &0x1234567890abcdef, &Some(byte_vector!(0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef)));
+        assert_round_trip(int64, &-2, &Some(byte_vector!(0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe)));
+        assert_round_trip(int64_l, &0x1234567890abcdef, &Some(byte_vector!(0xef, 0xcd, 0xab, 0x90, 0x78, 0x56, 0x34, 0x12)));
+        assert_round_trip(int64_l, &-2, &Some(byte_vector!(0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff)));
     }
 
     //
@@ -637,7 +637,7 @@ mod tests {
     
     #[test]
     fn an_ignore_codec_should_round_trip() {
-        assert_round_trip_bytes(ignore(4), &(), &Some(byte_vector!(0, 0, 0, 0)));
+        assert_round_trip(ignore(4), &(), &Some(byte_vector!(0, 0, 0, 0)));
     }
 
     #[test]
@@ -667,7 +667,7 @@ mod tests {
     #[test]
     fn a_constant_codec_should_round_trip() {
         let input = byte_vector!(1, 2, 3, 4);
-        assert_round_trip_bytes(constant(&input), &(), &Some(input));
+        assert_round_trip(constant(&input), &(), &Some(input));
     }
 
     #[test]
@@ -691,7 +691,7 @@ mod tests {
     #[test]
     fn an_identity_codec_should_round_trip() {
         let input = byte_vector!(1, 2, 3, 4);
-        assert_round_trip_bytes(identity_bytes, &input, &Some(input.clone()));
+        assert_round_trip(identity_bytes, &input, &Some(input.clone()));
     }
 
     //
@@ -701,7 +701,7 @@ mod tests {
     #[test]
     fn a_byte_vector_codec_should_round_trip() {
         let input = byte_vector!(7, 1, 2, 3, 4);
-        assert_round_trip_bytes(bytes(5), &input, &Some(input.clone()));
+        assert_round_trip(bytes(5), &input, &Some(input.clone()));
     }
 
     #[test]
@@ -731,13 +731,13 @@ mod tests {
     #[test]
     fn a_fixed_size_bytes_codec_should_round_trip() {
         let codec = fixed_size_bytes(1, uint8);
-        assert_round_trip_bytes(codec, &7u8, &Some(byte_vector!(7)));
+        assert_round_trip(codec, &7u8, &Some(byte_vector!(7)));
     }
 
     #[test]
     fn encoding_with_fixed_size_codec_should_pad_with_zeros_when_value_is_smaller_than_given_length() {
         let codec = fixed_size_bytes(3, uint8);
-        assert_round_trip_bytes(codec, &7u8, &Some(byte_vector!(7, 0, 0)));
+        assert_round_trip(codec, &7u8, &Some(byte_vector!(7, 0, 0)));
     }
 
     #[test]
@@ -774,7 +774,7 @@ mod tests {
     fn a_variable_size_bytes_codec_should_round_trip() {
         let input = byte_vector!(7, 1, 2, 3, 4);
         let codec = variable_size_bytes(uint16, identity_bytes);
-        assert_round_trip_bytes(codec, &input, &Some(byte_vector!(0, 5, 7, 1, 2, 3, 4)));
+        assert_round_trip(codec, &input, &Some(byte_vector!(0, 5, 7, 1, 2, 3, 4)));
     }
 
     #[test]
@@ -792,7 +792,7 @@ mod tests {
     fn an_eager_codec_should_round_trip() {
         let input = vec!(7, 1, 2, 3, 4);
         let codec = eager(variable_size_bytes(uint16, identity_bytes));
-        assert_round_trip_bytes(codec, &input, &Some(byte_vector!(0, 5, 7, 1, 2, 3, 4)));
+        assert_round_trip(codec, &input, &Some(byte_vector!(0, 5, 7, 1, 2, 3, 4)));
     }
     
     //
@@ -820,16 +820,16 @@ mod tests {
     
     #[test]
     fn an_hnil_codec_should_round_trip() {
-        assert_round_trip_bytes(hnil_codec, &HNil, &Some(byte_vector::empty()));
+        assert_round_trip(hnil_codec, &HNil, &Some(byte_vector::empty()));
     }
 
     #[test]
     fn an_hlist_prepend_codec_should_round_trip() {
         let codec1 = hlist_prepend_codec(uint8, hnil_codec);
-        assert_round_trip_bytes(codec1, &hlist!(7u8), &Some(byte_vector!(7)));
+        assert_round_trip(codec1, &hlist!(7u8), &Some(byte_vector!(7)));
 
         let codec2 = hlist_prepend_codec(uint8, hlist_prepend_codec(uint8, hnil_codec));
-        assert_round_trip_bytes(codec2, &hlist!(7u8, 3u8), &Some(byte_vector!(7, 3)));
+        assert_round_trip(codec2, &hlist!(7u8, 3u8), &Some(byte_vector!(7, 3)));
     }
 
     #[test]
@@ -837,13 +837,13 @@ mod tests {
         let codec = hlist_flat_prepend_codec(uint8, |header| {
             hcodec!({bytes((*header) as usize)} :: {uint16})
         });
-        assert_round_trip_bytes(codec, &hlist!(0x02u8, byte_vector!(0xAB, 0xCD), 0xCAFEu16), &Some(byte_vector!(0x02, 0xAB, 0xCD, 0xCA, 0xFE)));
+        assert_round_trip(codec, &hlist!(0x02u8, byte_vector!(0xAB, 0xCD), 0xCAFEu16), &Some(byte_vector!(0x02, 0xAB, 0xCD, 0xCA, 0xFE)));
     }
 
     #[test]
     fn an_hlist_codec_should_round_trip() {
         let codec = hcodec!({uint8} :: {uint8} :: {uint8}); 
-        assert_round_trip_bytes(codec, &hlist!(7u8, 3u8, 1u8), &Some(byte_vector!(7, 3, 1)));
+        assert_round_trip(codec, &hlist!(7u8, 3u8, 1u8), &Some(byte_vector!(7, 3, 1)));
     }
 
     #[test]
@@ -863,7 +863,7 @@ mod tests {
         
         let input = hlist!(1u8, 3u8, 7u8, 3u8, 1u8);
         let expected = byte_vector!(0xCA, 0xFE, 0x01, 0x03, 0x00, 0x07, 0x00, 0x00, 0x00, 0x03, 0x01);
-        assert_round_trip_bytes(codec, &input, &Some(expected));
+        assert_round_trip(codec, &input, &Some(expected));
     }
 
     //
@@ -891,6 +891,6 @@ mod tests {
     #[test]
     fn a_struct_codec_should_round_trip() {
         let codec = struct_codec!(TestStruct2 from {uint8} :: {uint8});
-        assert_round_trip_bytes(codec, &TestStruct2 { foo: 7u8, bar: 3u8 }, &Some(byte_vector!(7, 3)));
+        assert_round_trip(codec, &TestStruct2 { foo: 7u8, bar: 3u8 }, &Some(byte_vector!(7, 3)));
     }
 }
