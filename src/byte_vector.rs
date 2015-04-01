@@ -31,6 +31,17 @@ impl ByteVector {
         self.storage.read(buf, offset, len)
     }
 
+    /// Convert this byte vector to a Vec<u8> instance. Note that this will copy all of the underlying
+    /// data, so beware the increased memory usage.
+    pub fn to_vec(&self) -> Result<Vec<u8>, Error> {
+        // Allocate a buffer large enough to hold the backing bytes
+        let mut vec = vec![0u8; self.length()];
+
+        // Read from the byte vector into our mutable buffer, then return the buffer if successful
+        // TODO: Check that all bytes were read?
+        self.read(&mut vec[..], 0, self.length()).map(|_res| vec)
+    }
+    
     /// Return a new byte vector containing exactly `len` bytes from this byte vector, or an
     /// error if insufficient data is available.
     pub fn take(&self, len: usize) -> Result<ByteVector, Error> {
@@ -179,7 +190,6 @@ impl Debug for ByteVector {
             v.push(CHARS[(byte & 0xf) as usize]);
         }
         unsafe {
-            //let result = String::from_utf8_unchecked(v).fmt(f);
             let result = f.write_str(&String::from_utf8_unchecked(v));
             if result.is_err() {
                 return result;
@@ -440,7 +450,6 @@ mod tests {
 
         let buf: &mut[u8] = &mut[0, 0];
         let result = bv.read(buf, 1, 2);
-        assert!(result.is_ok());
         assert_eq!(result.unwrap(), 2);
         assert_eq!(buf, [2, 3]);
     }
@@ -457,7 +466,6 @@ mod tests {
         // Verify case where read takes from lhs only
         {
             let result = bv.read(buf, 0, 2);
-            assert!(result.is_ok());
             assert_eq!(result.unwrap(), 2);
             assert_eq!(buf, [1, 2]);
         }
@@ -465,7 +473,6 @@ mod tests {
         // Verify case where read takes from rhs only
         {
             let result = bv.read(buf, 5, 2);
-            assert!(result.is_ok());
             assert_eq!(result.unwrap(), 2);
             assert_eq!(buf, [2, 3]);
         }
@@ -473,12 +480,22 @@ mod tests {
         // Verify case where read takes from both lhs and rhs
         {
             let result = bv.read(buf, 3, 2);
-            assert!(result.is_ok());
             assert_eq!(result.unwrap(), 2);
             assert_eq!(buf, [4, 1]);
         }
     }
 
+    #[test]
+    fn to_vec_should_work() {
+        let input = vec!(1, 2, 3, 4);
+        let lhs = buffered(&input);
+        let rhs = buffered(&input);
+        let bv = append(&lhs, &rhs);
+
+        let result = bv.to_vec();
+        assert_eq!(result.unwrap(), vec!(1, 2, 3, 4, 1, 2, 3, 4));
+    }
+    
     #[test]
     fn take_should_fail_if_length_is_invalid() {
         let bv = byte_vector!(1, 2, 3, 4);
@@ -493,7 +510,6 @@ mod tests {
         let bv = byte_vector!(1, 2, 3, 4);
 
         let result = bv.take(2);
-        assert!(result.is_ok());
         assert_eq!(result.unwrap(), byte_vector!(1, 2));
     }
 
@@ -507,14 +523,12 @@ mod tests {
         // Verify case where take takes part of lhs only
         {
             let result = bv.take(2);
-            assert!(result.is_ok());
             assert_eq!(result.unwrap(), byte_vector!(1, 2));
         }
 
         // Verify case where take takes from both lhs and rhs
         {
             let result = bv.take(6);
-            assert!(result.is_ok());
             assert_eq!(result.unwrap(), byte_vector!(1, 2, 3, 4, 1, 2));
         }
     }
@@ -533,7 +547,6 @@ mod tests {
         let bv = byte_vector!(1, 2, 3, 4);
 
         let result = bv.drop(2);
-        assert!(result.is_ok());
         assert_eq!(result.unwrap(), byte_vector!(3, 4));
     }
 
@@ -547,14 +560,12 @@ mod tests {
         // Verify case where drop takes part of lhs only
         {
             let result = bv.drop(2);
-            assert!(result.is_ok());
             assert_eq!(result.unwrap(), byte_vector!(3, 4, 1, 2, 3, 4));
         }
 
         // Verify case where drop takes from both lhs and rhs
         {
             let result = bv.drop(6);
-            assert!(result.is_ok());
             assert_eq!(result.unwrap(), byte_vector!(3, 4));
         }
     }
