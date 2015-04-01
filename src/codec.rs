@@ -345,6 +345,28 @@ impl<L: Int + ToPrimitive + FromPrimitive + Display, V> Codec<V> for VariableSiz
     }
 }
 
+/// Codec that encodes/decodes fully-realized Vec<u8> values.
+///   - Encodes by first efficiently converting Vec<u8> values to a ByteVector.
+///   - Decodes by performing a fully-realized read on the backing ByteVector.
+pub fn eager<C: AsCodecRef<ByteVector>>(bv_codec: C) -> RcCodec<Vec<u8>> {
+    rcbox!(EagerCodec { bv_codec: bv_codec.as_codec_ref() })
+}
+struct EagerCodec { bv_codec: CodecRef<ByteVector> }
+impl Codec<Vec<u8>> for EagerCodec {
+    fn encode(&self, value: &Vec<u8>) -> EncodeResult {
+        self.bv_codec.encode(&byte_vector::buffered(value))
+    }
+
+    fn decode(&self, bv: &ByteVector) -> DecodeResult<Vec<u8>> {
+        forcomp!({
+            decoded <- self.bv_codec.decode(bv);
+            vec <- decoded.value.to_vec();
+        } yield {
+            DecoderResult { value: vec, remainder: decoded.remainder }
+        })
+    }
+}
+
 /// Codec for HNil type.
 pub static hnil_codec: &'static Codec<HNil> = &HNilCodec;
 struct HNilCodec;
@@ -528,7 +550,7 @@ mod tests {
             let compare_result = match *raw_bytes {
                 Some(ref expected) => {
                     if encoded != *expected {
-                        Err(Error::new(format!("Encoded bytes {:?} do not match expected bytes {:?}", encoded, *expected)))
+                         Err(Error::new(format!("Encoded bytes {:?} do not match expected bytes {:?}", encoded, *expected)))
                     } else {
                         Ok(())
                     }
@@ -762,6 +784,17 @@ mod tests {
         assert_eq!(codec.encode(&input).unwrap_err().message(), "Length of encoded value (256 bytes) is greater than maximum value (255) of length type");
     }
 
+    //
+    // Eager bytes codec
+    //
+
+    #[test]
+    fn an_eager_codec_should_round_trip() {
+        let input = vec!(7, 1, 2, 3, 4);
+        let codec = eager(variable_size_bytes(uint16, identity_bytes));
+        assert_round_trip_bytes(codec, &input, &Some(byte_vector!(0, 5, 7, 1, 2, 3, 4)));
+    }
+    
     //
     // Context injection ('|' operator)
     //
