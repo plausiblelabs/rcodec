@@ -275,12 +275,12 @@ impl StorageType {
             },
             StorageType::DirectValue { ref bytes, ref length } => {
                 let count = std::cmp::min(len, *length - offset);
-                std::slice::bytes::copy_memory(buf, &bytes[offset .. offset + count]);
+                std::slice::bytes::copy_memory(&bytes[offset .. offset + count], buf);
                 Ok(count)
             },
             StorageType::Heap { ref bytes } => {
                 let count = std::cmp::min(len, bytes.len() - offset);
-                std::slice::bytes::copy_memory(buf, &bytes[offset .. offset + count]);
+                std::slice::bytes::copy_memory(&bytes[offset .. offset + count], buf);
                 Ok(count)
             },
             StorageType::Append { ref lhs, ref rhs, .. } => {
@@ -371,7 +371,7 @@ pub fn buffered(bytes: &Vec<u8>) -> ByteVector {
     // TODO: For now we only support copying, so that the returned ByteVector owns a copy
     let storage = if bytes.len() <= DIRECT_VALUE_SIZE_LIMIT {
         let mut array = [0u8; DIRECT_VALUE_SIZE_LIMIT];
-        std::slice::bytes::copy_memory(&mut array, bytes);
+        std::slice::bytes::copy_memory(bytes, &mut array);
         StorageType::DirectValue { bytes: array, length: bytes.len() }
     } else {
         StorageType::Heap { bytes: bytes.clone() }
