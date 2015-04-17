@@ -34,3 +34,6 @@ pub mod codec;
 
 // The following allows us to make use of the core crate (e.g. for core::ops).
 extern crate core;
+
+// The following is used for integral codecs.
+extern crate num;

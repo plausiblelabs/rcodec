@@ -8,10 +8,10 @@
 
 use std::fmt::Display;
 use std::mem::size_of;
-use std::num;
-use std::num::{Int, FromPrimitive, ToPrimitive};
 use std::rc::Rc;
 use std::vec;
+
+use num::traits::{PrimInt, Unsigned, FromPrimitive, ToPrimitive, cast};
 
 use error::Error;
 use byte_vector;
@@ -142,7 +142,7 @@ enum ByteOrder {
 }
 
 struct IntegralCodec { order: ByteOrder }
-impl<T: Int + FromPrimitive> Codec<T> for IntegralCodec {
+impl<T: PrimInt + FromPrimitive> Codec<T> for IntegralCodec {
     fn encode(&self, value: &T) -> EncodeResult {
         // TODO: Use direct() once it's implemented
         let size = size_of::<T>();
@@ -157,10 +157,10 @@ impl<T: Int + FromPrimitive> Codec<T> for IntegralCodec {
                     // i8 requires special handling since it can't represent 0xff.
                     // We do the same calculations, but using i16 to avoid overflow.
                     // This same code path also works for u8, so we can just check the size.
-                    let bigger: i16 = num::cast(*value).unwrap();
-                    num::cast(bigger & 0xff).unwrap()
+                    let bigger: i16 = cast(*value).unwrap();
+                    cast(bigger & 0xff).unwrap()
                 }
-                _ => num::cast((*value >> shift) & T::from_u8(0xff).unwrap()).unwrap()
+                _ => cast((*value >> shift) & T::from_u8(0xff).unwrap()).unwrap()
             };
             v.push(byte);
         }
@@ -179,15 +179,15 @@ impl<T: Int + FromPrimitive> Codec<T> for IntegralCodec {
                     // is done manually by subtracting if the type is signed and
                     // the unsigned byte value is in the upper (negative) half of
                     // the range.
-                    let mut value: i16 = num::cast(v[0]).unwrap();
-                    let tmax: i16 = num::cast(T::max_value()).unwrap();
+                    let mut value: i16 = cast(v[0]).unwrap();
+                    let tmax: i16 = cast(T::max_value()).unwrap();
                     if value > tmax {
                         // This condition is only true if T is i8 and the value
                         // is negative. Convert from the serialized unsigned byte
                         // to the deserialized signed integer by subtracting 2^8.
                         value -= 256;
                     }
-                    num::cast(value).unwrap()
+                    cast(value).unwrap()
                 }
                 _ => {
                     let mut value = T::zero();
@@ -307,16 +307,13 @@ impl<T> Codec<T> for FixedSizeCodec<T> {
 /// Codec for length-delimited values.
 ///   - Encodes by encoding the length (in bytes) of the value followed by the value itself.
 ///   - Decodes by decoding the length and then attempting to decode the value that follows.
-pub fn variable_size_bytes<L: 'static + Int + ToPrimitive + FromPrimitive + Display, V: 'static, LC: AsCodecRef<L>, VC: AsCodecRef<V>>(len_codec: LC, val_codec: VC) -> RcCodec<V> {
+pub fn variable_size_bytes<L: 'static + PrimInt + Unsigned + ToPrimitive + FromPrimitive + Display, V: 'static, LC: AsCodecRef<L>, VC: AsCodecRef<V>>(len_codec: LC, val_codec: VC) -> RcCodec<V>
+    where L::FromStrRadixErr: 'static
+{
     rcbox!(VariableSizeCodec { len_codec: len_codec.as_codec_ref(), val_codec: val_codec.as_codec_ref() })
 }
-struct VariableSizeCodec<L: 'static + Int + ToPrimitive + FromPrimitive + Display, V: 'static> { len_codec: CodecRef<L>, val_codec: CodecRef<V> }
-impl<L: Int + ToPrimitive + FromPrimitive + Display, V> Codec<V> for VariableSizeCodec<L, V> {
-    // TODO: Currently there is no Unsigned trait that we can use to restrict the length codec to unsigned types,
-    // but there is one proposed here:
-    //   https://github.com/rust-lang/rfcs/blob/master/text/0369-num-reform.md
-    // So if that ever comes to fruition, we should switch to that trait here in place of Int.
-    
+struct VariableSizeCodec<L: 'static + PrimInt + Unsigned + ToPrimitive + FromPrimitive + Display, V: 'static> { len_codec: CodecRef<L>, val_codec: CodecRef<V> }
+impl<L: PrimInt + Unsigned + ToPrimitive + FromPrimitive + Display, V> Codec<V> for VariableSizeCodec<L, V> {
     fn encode(&self, value: &V) -> EncodeResult {
         // Encode the value, then prepend the length of the encoded value
         self.val_codec.encode(&value).and_then(|encoded_val| {
@@ -822,17 +819,13 @@ mod tests {
     #[allow(unused_parens)]
     #[test]
     fn context_should_be_pushed_when_using_the_bitor_operator() {
-        // TODO: This test is disabled until we can figure out a solution for the operator overloading issue
-        // let input = byte_vector::empty();
-        // let codec =
-        //     ("section" |
-        //      ("header" |
-        //       ("magic" | uint8)
-        //       )
-        //      );
+        // TODO: This test is temporarily written using with_context() rather than the `|` operator
+        // while we figure out a solution for the operator overloading issues
+        let input = byte_vector::empty();
+        let codec = with_context("section", with_context("header", with_context("magic", uint8)));
 
-        // // Verify that the error message is prefexed with the correct context
-        // assert_eq!(codec.decode(&input).unwrap_err().message(), "section/header/magic: Requested read offset of 0 and length 1 bytes exceeds vector length of 0");
+        // Verify that the error message is prefexed with the correct context
+        assert_eq!(codec.decode(&input).unwrap_err().message(), "section/header/magic: Requested read offset of 0 and length 1 bytes exceeds vector length of 0");
     }
 
     //
