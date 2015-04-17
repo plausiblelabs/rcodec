@@ -4,5 +4,8 @@ name = "rcodec"
 version = "0.0.1"
 authors = ["Chris Campbell <campbell@plausible.coop>"]
 
+[dependencies]
+num = "*"
+
 [dependencies.rcodec_macros]
 path = "rcodec_macros"

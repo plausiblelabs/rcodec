@@ -16,6 +16,10 @@
 #![feature(plugin, custom_attribute)]
 #![plugin(rcodec_macros)]
 
+// The following suppresses warnings related to unstable stuff used for file-backed ByteVectors.
+#![feature(file_path)]
+#![feature(path_ext)]
+
 // The following is necessary to make exported macros visible.
 #[macro_use]
 pub mod macros;
@@ -30,3 +34,6 @@ pub mod codec;
 
 // The following allows us to make use of the core crate (e.g. for core::ops).
 extern crate core;
+
+// The following is used for integral codecs.
+extern crate num;

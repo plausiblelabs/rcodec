@@ -8,11 +8,10 @@
 
 use std::fmt::Display;
 use std::mem::size_of;
-use std::num;
-use std::num::{Int, FromPrimitive, ToPrimitive};
 use std::rc::Rc;
 use std::vec;
-use core;
+
+use num::traits::{PrimInt, Unsigned, FromPrimitive, ToPrimitive, cast};
 
 use error::Error;
 use byte_vector;
@@ -79,7 +78,7 @@ impl<T: 'static> Codec<T> for CodecRef<T> {
 }
 
 /// Trait that enables limited function overloading, so that functions that accept one or more Codecs can
-/// accept them as either a boxed value (Box<Codec<T>>) or a static reference (&'static Codec<T>).
+/// accept them as either a reference-counted value (RcCodec<T>) or a static reference (&'static Codec<T>).
 pub trait AsCodecRef<T> {
     fn as_codec_ref(self) -> CodecRef<T>;
 }
@@ -143,7 +142,7 @@ enum ByteOrder {
 }
 
 struct IntegralCodec { order: ByteOrder }
-impl<T: Int + FromPrimitive> Codec<T> for IntegralCodec {
+impl<T: PrimInt + FromPrimitive> Codec<T> for IntegralCodec {
     fn encode(&self, value: &T) -> EncodeResult {
         // TODO: Use direct() once it's implemented
         let size = size_of::<T>();
@@ -158,10 +157,10 @@ impl<T: Int + FromPrimitive> Codec<T> for IntegralCodec {
                     // i8 requires special handling since it can't represent 0xff.
                     // We do the same calculations, but using i16 to avoid overflow.
                     // This same code path also works for u8, so we can just check the size.
-                    let bigger: i16 = num::cast(*value).unwrap();
-                    num::cast(bigger & 0xff).unwrap()
+                    let bigger: i16 = cast(*value).unwrap();
+                    cast(bigger & 0xff).unwrap()
                 }
-                _ => num::cast((*value >> shift) & T::from_u8(0xff).unwrap()).unwrap()
+                _ => cast((*value >> shift) & T::from_u8(0xff).unwrap()).unwrap()
             };
             v.push(byte);
         }
@@ -180,15 +179,15 @@ impl<T: Int + FromPrimitive> Codec<T> for IntegralCodec {
                     // is done manually by subtracting if the type is signed and
                     // the unsigned byte value is in the upper (negative) half of
                     // the range.
-                    let mut value: i16 = num::cast(v[0]).unwrap();
-                    let tmax: i16 = num::cast(T::max_value()).unwrap();
+                    let mut value: i16 = cast(v[0]).unwrap();
+                    let tmax: i16 = cast(T::max_value()).unwrap();
                     if value > tmax {
                         // This condition is only true if T is i8 and the value
                         // is negative. Convert from the serialized unsigned byte
                         // to the deserialized signed integer by subtracting 2^8.
                         value -= 256;
                     }
-                    num::cast(value).unwrap()
+                    cast(value).unwrap()
                 }
                 _ => {
                     let mut value = T::zero();
@@ -308,16 +307,13 @@ impl<T> Codec<T> for FixedSizeCodec<T> {
 /// Codec for length-delimited values.
 ///   - Encodes by encoding the length (in bytes) of the value followed by the value itself.
 ///   - Decodes by decoding the length and then attempting to decode the value that follows.
-pub fn variable_size_bytes<L: 'static + Int + ToPrimitive + FromPrimitive + Display, V: 'static, LC: AsCodecRef<L>, VC: AsCodecRef<V>>(len_codec: LC, val_codec: VC) -> RcCodec<V> {
+pub fn variable_size_bytes<L: 'static + PrimInt + Unsigned + ToPrimitive + FromPrimitive + Display, V: 'static, LC: AsCodecRef<L>, VC: AsCodecRef<V>>(len_codec: LC, val_codec: VC) -> RcCodec<V>
+    where L::FromStrRadixErr: 'static
+{
     rcbox!(VariableSizeCodec { len_codec: len_codec.as_codec_ref(), val_codec: val_codec.as_codec_ref() })
 }
-struct VariableSizeCodec<L: 'static + Int + ToPrimitive + FromPrimitive + Display, V: 'static> { len_codec: CodecRef<L>, val_codec: CodecRef<V> }
-impl<L: Int + ToPrimitive + FromPrimitive + Display, V> Codec<V> for VariableSizeCodec<L, V> {
-    // TODO: Currently there is no Unsigned trait that we can use to restrict the length codec to unsigned types,
-    // but there is one proposed here:
-    //   https://github.com/rust-lang/rfcs/blob/master/text/0369-num-reform.md
-    // So if that ever comes to fruition, we should switch to that trait here in place of Int.
-    
+struct VariableSizeCodec<L: 'static + PrimInt + Unsigned + ToPrimitive + FromPrimitive + Display, V: 'static> { len_codec: CodecRef<L>, val_codec: CodecRef<V> }
+impl<L: PrimInt + Unsigned + ToPrimitive + FromPrimitive + Display, V> Codec<V> for VariableSizeCodec<L, V> {
     fn encode(&self, value: &V) -> EncodeResult {
         // Encode the value, then prepend the length of the encoded value
         self.val_codec.encode(&value).and_then(|encoded_val| {
@@ -341,6 +337,28 @@ impl<L: Int + ToPrimitive + FromPrimitive + Display, V> Codec<V> for VariableSiz
             decoded_val <- self.val_codec.decode(&remainder);
         } yield {
             DecoderResult { value: decoded_val.value, remainder: bv.drop(remainder.length()).unwrap() }
+        })
+    }
+}
+
+/// Codec that encodes/decodes fully-realized Vec<u8> values.
+///   - Encodes by first efficiently converting Vec<u8> values to a ByteVector.
+///   - Decodes by performing a fully-realized read on the backing ByteVector.
+pub fn eager<C: AsCodecRef<ByteVector>>(bv_codec: C) -> RcCodec<Vec<u8>> {
+    rcbox!(EagerCodec { bv_codec: bv_codec.as_codec_ref() })
+}
+struct EagerCodec { bv_codec: CodecRef<ByteVector> }
+impl Codec<Vec<u8>> for EagerCodec {
+    fn encode(&self, value: &Vec<u8>) -> EncodeResult {
+        self.bv_codec.encode(&byte_vector::buffered(value))
+    }
+
+    fn decode(&self, bv: &ByteVector) -> DecodeResult<Vec<u8>> {
+        forcomp!({
+            decoded <- self.bv_codec.decode(bv);
+            vec <- decoded.value.to_vec();
+        } yield {
+            DecoderResult { value: vec, remainder: decoded.remainder }
         })
     }
 }
@@ -439,23 +457,44 @@ impl<H, S: AsHList<H>> Codec<S> for RecordStructCodec<H> {
 
 /// Override for the '|' operator that creates a new codec that injects additional context (e.g. in error messages)
 /// into the codec on the right-hand side.
+//
 // TODO: Can we have a single impl that works on AsCodecRef<T>?  Attempts so far like this:
 //   impl<T: 'static, TC: AsCodecRef<T>> core::ops::BitOr<TC> for &'static str {
-// have resulted in:
-//   error: the type parameter `T` is not constrained by the impl trait, self type, or predicates [E0207]
-impl<T: 'static> core::ops::BitOr<&'static Codec<T>> for &'static str {
-    type Output = RcCodec<T>;
+//
+// TODO: The orphan checking rules were changed shortly before Rust 1.0.0 such that we can't implement
+// the BitOr trait with a Codec on the RHS.  Compilation fails with:
+//
+// src/codec.rs:475:1: 481:2 error: type parameter `T` must be used as the type parameter for some local type
+//                           (e.g. `MyStruct<T>`); only traits defined in the current crate can be implemented
+//                           for a type parameter [E0210]
+// src/codec.rs:475 impl<T: 'static> core::ops::BitOr<RcCodec<T>> for &'static str {
+// src/codec.rs:476     type Output = RcCodec<T>;
+// src/codec.rs:477 
+// src/codec.rs:478     fn bitor(self, rhs: RcCodec<T>) -> RcCodec<T> {
+// src/codec.rs:479         rcbox!(ContextCodec { codec: rhs.as_codec_ref(), context: self })
+// src/codec.rs:480     }
+//
+// See related discussion here:
+//   https://github.com/rust-lang/rust/issues/20749
+//
+// As a workaround, we handle context injection directly inside the hcodec! macro, sigh.
+//
+// impl<T: 'static> core::ops::BitOr<&'static Codec<T>> for &'static str {
+//     type Output = RcCodec<T>;
 
-    fn bitor(self, rhs: &'static Codec<T>) -> RcCodec<T> {
-        rcbox!(ContextCodec { codec: rhs.as_codec_ref(), context: self })
-    }
-}
-impl<T: 'static> core::ops::BitOr<RcCodec<T>> for &'static str {
-    type Output = RcCodec<T>;
+//     fn bitor(self, rhs: &'static Codec<T>) -> RcCodec<T> {
+//         rcbox!(ContextCodec { codec: rhs.as_codec_ref(), context: self })
+//     }
+// }
+// impl<T: 'static> core::ops::BitOr<RcCodec<T>> for &'static str {
+//     type Output = RcCodec<T>;
 
-    fn bitor(self, rhs: RcCodec<T>) -> RcCodec<T> {
-        rcbox!(ContextCodec { codec: rhs.as_codec_ref(), context: self })
-    }
+//     fn bitor(self, rhs: RcCodec<T>) -> RcCodec<T> {
+//         rcbox!(ContextCodec { codec: rhs.as_codec_ref(), context: self })
+//     }
+// }
+pub fn with_context<T: 'static, TC: AsCodecRef<T>>(context: &'static str, codec: TC) -> RcCodec<T> {
+    rcbox!(ContextCodec { codec: codec.as_codec_ref(), context: context })
 }
 struct ContextCodec<T: 'static> { codec: CodecRef<T>, context: &'static str }
 impl<T> Codec<T> for ContextCodec<T> {
@@ -509,7 +548,7 @@ mod tests {
 
         let v2 = forcomp!({
             foo <- Some(1u8);
-            bar <- None;
+            bar <- None::<u8>;
         } yield { foo + bar });
         assert!(v2.is_none());
 
@@ -520,7 +559,7 @@ mod tests {
         assert_eq!(v3.unwrap(), 3u8);
     }
     
-    fn assert_round_trip_bytes<T: 'static + Eq + Debug, C: AsCodecRef<T>>(c: C, value: &T, raw_bytes: &Option<ByteVector>) {
+    fn assert_round_trip<T: 'static + Eq + Debug, C: AsCodecRef<T>>(c: C, value: &T, raw_bytes: &Option<ByteVector>) {
         // Encode
         let codec = c.as_codec_ref();
         let result = codec.encode(value).and_then(|encoded| {
@@ -528,7 +567,7 @@ mod tests {
             let compare_result = match *raw_bytes {
                 Some(ref expected) => {
                     if encoded != *expected {
-                        Err(Error::new(format!("Encoded bytes {:?} do not match expected bytes {:?}", encoded, *expected)))
+                         Err(Error::new(format!("Encoded bytes {:?} do not match expected bytes {:?}", encoded, *expected)))
                     } else {
                         Ok(())
                     }
@@ -556,57 +595,57 @@ mod tests {
     
     #[test]
     fn a_u8_value_should_round_trip() {
-        assert_round_trip_bytes(uint8, &7, &Some(byte_vector!(7)));
+        assert_round_trip(uint8, &7, &Some(byte_vector!(7)));
     }
     
     #[test]
     fn an_i8_value_should_round_trip() {
-        assert_round_trip_bytes(int8, &7, &Some(byte_vector!(7)));
-        assert_round_trip_bytes(int8, &-2, &Some(byte_vector!(0xfe)));
-        assert_round_trip_bytes(int8, &-16, &Some(byte_vector!(0xf0)));
-        assert_round_trip_bytes(int8, &-128, &Some(byte_vector!(0x80)));
+        assert_round_trip(int8, &7, &Some(byte_vector!(7)));
+        assert_round_trip(int8, &-2, &Some(byte_vector!(0xfe)));
+        assert_round_trip(int8, &-16, &Some(byte_vector!(0xf0)));
+        assert_round_trip(int8, &-128, &Some(byte_vector!(0x80)));
     }
     
     #[test]
     fn a_u16_value_should_round_trip() {
-        assert_round_trip_bytes(uint16, &0x1234, &Some(byte_vector!(0x12, 0x34)));
-        assert_round_trip_bytes(uint16_l, &0x1234, &Some(byte_vector!(0x34, 0x12)));
+        assert_round_trip(uint16, &0x1234, &Some(byte_vector!(0x12, 0x34)));
+        assert_round_trip(uint16_l, &0x1234, &Some(byte_vector!(0x34, 0x12)));
     }
 
     #[test]
     fn an_i16_value_should_round_trip() {
-        assert_round_trip_bytes(int16, &0x1234, &Some(byte_vector!(0x12, 0x34)));
-        assert_round_trip_bytes(int16, &-2, &Some(byte_vector!(0xff, 0xfe)));
-        assert_round_trip_bytes(int16_l, &0x1234, &Some(byte_vector!(0x34, 0x12)));
-        assert_round_trip_bytes(int16_l, &-2, &Some(byte_vector!(0xfe, 0xff)));
+        assert_round_trip(int16, &0x1234, &Some(byte_vector!(0x12, 0x34)));
+        assert_round_trip(int16, &-2, &Some(byte_vector!(0xff, 0xfe)));
+        assert_round_trip(int16_l, &0x1234, &Some(byte_vector!(0x34, 0x12)));
+        assert_round_trip(int16_l, &-2, &Some(byte_vector!(0xfe, 0xff)));
     }
 
     #[test]
     fn a_u32_value_should_round_trip() {
-        assert_round_trip_bytes(uint32, &0x12345678, &Some(byte_vector!(0x12, 0x34, 0x56, 0x78)));
-        assert_round_trip_bytes(uint32_l, &0x12345678, &Some(byte_vector!(0x78, 0x56, 0x34, 0x12)));
+        assert_round_trip(uint32, &0x12345678, &Some(byte_vector!(0x12, 0x34, 0x56, 0x78)));
+        assert_round_trip(uint32_l, &0x12345678, &Some(byte_vector!(0x78, 0x56, 0x34, 0x12)));
     }
 
     #[test]
     fn an_i32_value_should_round_trip() {
-        assert_round_trip_bytes(uint32, &0x12345678, &Some(byte_vector!(0x12, 0x34, 0x56, 0x78)));
-        assert_round_trip_bytes(uint32, &-2, &Some(byte_vector!(0xff, 0xff, 0xff, 0xfe)));
-        assert_round_trip_bytes(uint32_l, &0x12345678, &Some(byte_vector!(0x78, 0x56, 0x34, 0x12)));
-        assert_round_trip_bytes(uint32_l, &-2, &Some(byte_vector!(0xfe, 0xff, 0xff, 0xff)));
+        assert_round_trip(uint32, &0x12345678, &Some(byte_vector!(0x12, 0x34, 0x56, 0x78)));
+        assert_round_trip(uint32, &-2, &Some(byte_vector!(0xff, 0xff, 0xff, 0xfe)));
+        assert_round_trip(uint32_l, &0x12345678, &Some(byte_vector!(0x78, 0x56, 0x34, 0x12)));
+        assert_round_trip(uint32_l, &-2, &Some(byte_vector!(0xfe, 0xff, 0xff, 0xff)));
     }
 
     #[test]
     fn a_u64_value_should_round_trip() {
-        assert_round_trip_bytes(uint64, &0x1234567890abcdef, &Some(byte_vector!(0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef)));
-        assert_round_trip_bytes(uint64_l, &0x1234567890abcdef, &Some(byte_vector!(0xef, 0xcd, 0xab, 0x90, 0x78, 0x56, 0x34, 0x12)));
+        assert_round_trip(uint64, &0x1234567890abcdef, &Some(byte_vector!(0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef)));
+        assert_round_trip(uint64_l, &0x1234567890abcdef, &Some(byte_vector!(0xef, 0xcd, 0xab, 0x90, 0x78, 0x56, 0x34, 0x12)));
     }
 
     #[test]
     fn an_i64_value_should_round_trip() {
-        assert_round_trip_bytes(int64, &0x1234567890abcdef, &Some(byte_vector!(0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef)));
-        assert_round_trip_bytes(int64, &-2, &Some(byte_vector!(0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe)));
-        assert_round_trip_bytes(int64_l, &0x1234567890abcdef, &Some(byte_vector!(0xef, 0xcd, 0xab, 0x90, 0x78, 0x56, 0x34, 0x12)));
-        assert_round_trip_bytes(int64_l, &-2, &Some(byte_vector!(0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff)));
+        assert_round_trip(int64, &0x1234567890abcdef, &Some(byte_vector!(0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef)));
+        assert_round_trip(int64, &-2, &Some(byte_vector!(0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe)));
+        assert_round_trip(int64_l, &0x1234567890abcdef, &Some(byte_vector!(0xef, 0xcd, 0xab, 0x90, 0x78, 0x56, 0x34, 0x12)));
+        assert_round_trip(int64_l, &-2, &Some(byte_vector!(0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff)));
     }
 
     //
@@ -615,7 +654,7 @@ mod tests {
     
     #[test]
     fn an_ignore_codec_should_round_trip() {
-        assert_round_trip_bytes(ignore(4), &(), &Some(byte_vector!(0, 0, 0, 0)));
+        assert_round_trip(ignore(4), &(), &Some(byte_vector!(0, 0, 0, 0)));
     }
 
     #[test]
@@ -645,7 +684,7 @@ mod tests {
     #[test]
     fn a_constant_codec_should_round_trip() {
         let input = byte_vector!(1, 2, 3, 4);
-        assert_round_trip_bytes(constant(&input), &(), &Some(input));
+        assert_round_trip(constant(&input), &(), &Some(input));
     }
 
     #[test]
@@ -669,7 +708,7 @@ mod tests {
     #[test]
     fn an_identity_codec_should_round_trip() {
         let input = byte_vector!(1, 2, 3, 4);
-        assert_round_trip_bytes(identity_bytes, &input, &Some(input.clone()));
+        assert_round_trip(identity_bytes, &input, &Some(input.clone()));
     }
 
     //
@@ -679,7 +718,7 @@ mod tests {
     #[test]
     fn a_byte_vector_codec_should_round_trip() {
         let input = byte_vector!(7, 1, 2, 3, 4);
-        assert_round_trip_bytes(bytes(5), &input, &Some(input.clone()));
+        assert_round_trip(bytes(5), &input, &Some(input.clone()));
     }
 
     #[test]
@@ -709,13 +748,13 @@ mod tests {
     #[test]
     fn a_fixed_size_bytes_codec_should_round_trip() {
         let codec = fixed_size_bytes(1, uint8);
-        assert_round_trip_bytes(codec, &7u8, &Some(byte_vector!(7)));
+        assert_round_trip(codec, &7u8, &Some(byte_vector!(7)));
     }
 
     #[test]
     fn encoding_with_fixed_size_codec_should_pad_with_zeros_when_value_is_smaller_than_given_length() {
         let codec = fixed_size_bytes(3, uint8);
-        assert_round_trip_bytes(codec, &7u8, &Some(byte_vector!(7, 0, 0)));
+        assert_round_trip(codec, &7u8, &Some(byte_vector!(7, 0, 0)));
     }
 
     #[test]
@@ -752,7 +791,7 @@ mod tests {
     fn a_variable_size_bytes_codec_should_round_trip() {
         let input = byte_vector!(7, 1, 2, 3, 4);
         let codec = variable_size_bytes(uint16, identity_bytes);
-        assert_round_trip_bytes(codec, &input, &Some(byte_vector!(0, 5, 7, 1, 2, 3, 4)));
+        assert_round_trip(codec, &input, &Some(byte_vector!(0, 5, 7, 1, 2, 3, 4)));
     }
 
     #[test]
@@ -763,19 +802,27 @@ mod tests {
     }
 
     //
+    // Eager bytes codec
+    //
+
+    #[test]
+    fn an_eager_codec_should_round_trip() {
+        let input = vec!(7, 1, 2, 3, 4);
+        let codec = eager(variable_size_bytes(uint16, identity_bytes));
+        assert_round_trip(codec, &input, &Some(byte_vector!(0, 5, 7, 1, 2, 3, 4)));
+    }
+    
+    //
     // Context injection ('|' operator)
     //
     
     #[allow(unused_parens)]
     #[test]
     fn context_should_be_pushed_when_using_the_bitor_operator() {
+        // TODO: This test is temporarily written using with_context() rather than the `|` operator
+        // while we figure out a solution for the operator overloading issues
         let input = byte_vector::empty();
-        let codec =
-            ("section" |
-             ("header" |
-              ("magic" | uint8)
-              )
-             );
+        let codec = with_context("section", with_context("header", with_context("magic", uint8)));
 
         // Verify that the error message is prefexed with the correct context
         assert_eq!(codec.decode(&input).unwrap_err().message(), "section/header/magic: Requested read offset of 0 and length 1 bytes exceeds vector length of 0");
@@ -787,16 +834,16 @@ mod tests {
     
     #[test]
     fn an_hnil_codec_should_round_trip() {
-        assert_round_trip_bytes(hnil_codec, &HNil, &Some(byte_vector::empty()));
+        assert_round_trip(hnil_codec, &HNil, &Some(byte_vector::empty()));
     }
 
     #[test]
     fn an_hlist_prepend_codec_should_round_trip() {
         let codec1 = hlist_prepend_codec(uint8, hnil_codec);
-        assert_round_trip_bytes(codec1, &hlist!(7u8), &Some(byte_vector!(7)));
+        assert_round_trip(codec1, &hlist!(7u8), &Some(byte_vector!(7)));
 
         let codec2 = hlist_prepend_codec(uint8, hlist_prepend_codec(uint8, hnil_codec));
-        assert_round_trip_bytes(codec2, &hlist!(7u8, 3u8), &Some(byte_vector!(7, 3)));
+        assert_round_trip(codec2, &hlist!(7u8, 3u8), &Some(byte_vector!(7, 3)));
     }
 
     #[test]
@@ -804,33 +851,33 @@ mod tests {
         let codec = hlist_flat_prepend_codec(uint8, |header| {
             hcodec!({bytes((*header) as usize)} :: {uint16})
         });
-        assert_round_trip_bytes(codec, &hlist!(0x02u8, byte_vector!(0xAB, 0xCD), 0xCAFEu16), &Some(byte_vector!(0x02, 0xAB, 0xCD, 0xCA, 0xFE)));
+        assert_round_trip(codec, &hlist!(0x02u8, byte_vector!(0xAB, 0xCD), 0xCAFEu16), &Some(byte_vector!(0x02, 0xAB, 0xCD, 0xCA, 0xFE)));
     }
 
     #[test]
     fn an_hlist_codec_should_round_trip() {
         let codec = hcodec!({uint8} :: {uint8} :: {uint8}); 
-        assert_round_trip_bytes(codec, &hlist!(7u8, 3u8, 1u8), &Some(byte_vector!(7, 3, 1)));
+        assert_round_trip(codec, &hlist!(7u8, 3u8, 1u8), &Some(byte_vector!(7, 3, 1)));
     }
 
     #[test]
     fn the_hcodec_macro_should_work_with_a_mix_of_operations() {
         let m = byte_vector!(0xCA, 0xFE);
         let codec = hcodec!(
-            { "magic"      | constant(&m) } >>
-            { "version"    | uint8        } ::
-            { "junk_len"   | uint8        } >>= |junk_len| { hcodec!(
-                { "skip"   | ignore(1)                  } >>
-                { "first"  | uint8                      } ::
-                { "junk"   | ignore(*junk_len as usize) } >>
-                { "second" | uint8                      } ::
-                { "third"  | uint8                      }
+            { "magic"      => constant(&m) } >>
+            { "version"    => uint8        } ::
+            { "junk_len"   => uint8        } >>= |junk_len| { hcodec!(
+                { "skip"   => ignore(1)                  } >>
+                { "first"  => uint8                      } ::
+                { "junk"   => ignore(*junk_len as usize) } >>
+                { "second" => uint8                      } ::
+                { "third"  => uint8                      }
             )}
         );
         
         let input = hlist!(1u8, 3u8, 7u8, 3u8, 1u8);
         let expected = byte_vector!(0xCA, 0xFE, 0x01, 0x03, 0x00, 0x07, 0x00, 0x00, 0x00, 0x03, 0x01);
-        assert_round_trip_bytes(codec, &input, &Some(expected));
+        assert_round_trip(codec, &input, &Some(expected));
     }
 
     //
@@ -858,6 +905,6 @@ mod tests {
     #[test]
     fn a_struct_codec_should_round_trip() {
         let codec = struct_codec!(TestStruct2 from {uint8} :: {uint8});
-        assert_round_trip_bytes(codec, &TestStruct2 { foo: 7u8, bar: 3u8 }, &Some(byte_vector!(7, 3)));
+        assert_round_trip(codec, &TestStruct2 { foo: 7u8, bar: 3u8 }, &Some(byte_vector!(7, 3)));
     }
 }
