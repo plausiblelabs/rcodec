@@ -18,7 +18,6 @@
 
 // The following suppresses warnings related to unstable stuff used for file-backed ByteVectors.
 #![feature(file_path)]
-#![feature(io)]
 #![feature(path_ext)]
 
 // The following is necessary to make exported macros visible.

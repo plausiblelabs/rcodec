@@ -6,10 +6,10 @@
 // Scala scodec library: https://github.com/scodec/scodec/
 //
 
-use core::error;
 use core::fmt;
 use std;
 use std::cell::RefCell;
+use std::error;
 use std::fmt::{Debug, Formatter};
 use std::fs::File;
 use std::fs::PathExt;

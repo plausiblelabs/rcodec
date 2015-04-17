@@ -100,16 +100,26 @@ macro_rules! hcodec {
         hnil_codec
     };
     { $head:block } => {
-        hlist_prepend_codec($head, hnil_codec)
+        hlist_prepend_codec(hcodec_block!($head), hnil_codec)
     };
     { $head:block :: $($tail:tt)+ } => {
-        hlist_prepend_codec($head, hcodec!($($tail)+))
+        hlist_prepend_codec(hcodec_block!($head), hcodec!($($tail)+))
     };
     { $head:block >> $($tail:tt)+ } => {
-        drop_left($head, hcodec!($($tail)+))
+        drop_left(hcodec_block!($head), hcodec!($($tail)+))
     };
     { $head:block >>= |$v:ident| $fnbody:block } => {
-        hlist_flat_prepend_codec($head, |$v| $fnbody)
+        hlist_flat_prepend_codec(hcodec_block!($head), |$v| $fnbody)
+    };
+}
+
+#[macro_export]
+macro_rules! hcodec_block {
+    { { $ctx:block | $codec:expr } } => {
+        Rc::new(Box::new(ContextCodec { codec: $codec.as_codec_ref(), context: $ctx }))
+    };
+    { $b:block } => {
+        $b
     };
 }
 
