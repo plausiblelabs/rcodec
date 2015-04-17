@@ -884,27 +884,21 @@ mod tests {
     // Struct conversion codec
     //
     
-    record_struct_with_hlist_type!(
-        TestStruct1, HCons<u8, HCons<u8, HNil>>,
-        foo: u8,
-        bar: u8);
-
     record_struct!(
-        TestStruct2,
+        TestStruct1,
         foo: u8,
         bar: u8);
 
     #[test]
     fn record_structs_should_work() {
         let s1 = TestStruct1::from_hlist(hlist!(7u8, 3u8));
-        let s2 = TestStruct2::from_hlist(hlist!(7u8, 3u8));
-        assert_eq!(s1.foo, s2.foo);
-        assert_eq!(s1.bar, s2.bar);
+        assert_eq!(s1.foo, 7u8);
+        assert_eq!(s1.bar, 3u8);
     }
 
     #[test]
     fn a_struct_codec_should_round_trip() {
-        let codec = struct_codec!(TestStruct2 from {uint8} :: {uint8});
-        assert_round_trip(codec, &TestStruct2 { foo: 7u8, bar: 3u8 }, &Some(byte_vector!(7, 3)));
+        let codec = struct_codec!(TestStruct1 from {uint8} :: {uint8});
+        assert_round_trip(codec, &TestStruct1 { foo: 7u8, bar: 3u8 }, &Some(byte_vector!(7, 3)));
     }
 }

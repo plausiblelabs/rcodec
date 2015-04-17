@@ -99,27 +99,15 @@ macro_rules! hcodec {
     {} => {
         hnil_codec
     };
-    // { { $ctx:expr => $codec:expr } } => {
-    //     hlist_prepend_codec(hcodec_block!($ctx, $codec), hnil_codec)
-    // };
     { { $($head:tt)+ } } => {
         hlist_prepend_codec(hcodec_block!($($head)+), hnil_codec)
     };
-    // { { $ctx:expr => $codec:expr } :: $($tail:tt)+ } => {
-    //     hlist_prepend_codec(hcodec_block!($ctx, $codec), hcodec!($($tail)+))
-    // };
     { { $($head:tt)+ } :: $($tail:tt)+ } => {
         hlist_prepend_codec(hcodec_block!($($head)+), hcodec!($($tail)+))
     };
-    // { { $ctx:expr => $codec:expr } >> $($tail:tt)+ } => {
-    //     drop_left(hcodec_block!($ctx, $codec), hcodec!($($tail)+))
-    // };
     { { $($head:tt)+ } >> $($tail:tt)+ } => {
         drop_left(hcodec_block!($($head)+), hcodec!($($tail)+))
     };
-    // { { $ctx:expr => $codec:expr } >>= |$v:ident| $fnbody:block } => {
-    //     hlist_flat_prepend_codec(hcodec_block!($ctx, $codec), |$v| $fnbody)
-    // };
     { { $($head:tt)+ } >>= |$v:ident| $fnbody:block } => {
         hlist_flat_prepend_codec(hcodec_block!($($head)+), |$v| $fnbody)
     };
@@ -151,39 +139,15 @@ macro_rules! struct_codec {
     };
 }
 
-/// Shorthand for defining record structs that support HList conversions.
+/// Defines a struct that has derived impls for some common traits along with an `AsHList`
+/// implementation that takes all fields into account.
 #[macro_export]
-macro_rules! record_struct_with_hlist_type {
-    // Note that sadly, macros cannot expand to a type, so we have to manually pass in the HList type here
-    // instead of just generating it from the list of field types.  We provide the record_struct! compiler
-    // plugin as a more convenient frontend to this macro, since it can take care of building the HList type.
-    { $stype:ident, $hlisttype:ty, $($fieldname:ident: $fieldtype:ty),+ } => {
+macro_rules! record_struct {
+    { $stype:ident, $($fieldname:ident: $fieldtype:ty),+ } => {
         #[derive(Debug, PartialEq, Eq, Clone)]
+        #[AsHList]
         pub struct $stype {
             $($fieldname: $fieldtype),+
         }
-
-        #[allow(dead_code)]
-        impl AsHList<$hlisttype> for $stype {
-            fn from_hlist(hlist: $hlisttype) -> Self {
-                match hlist {
-                    record_struct_hlist_pattern!($($fieldname),+) => $stype { $($fieldname: $fieldname),+ }
-                }
-            }
-            
-            fn to_hlist(&self) -> $hlisttype {
-                hlist!($(self.$fieldname.clone()),+)
-            }
-        }
-    };
-}
-
-#[macro_export]
-macro_rules! record_struct_hlist_pattern {
-    { $head:ident } => {
-        $crate::hlist::HCons($head, $crate::hlist::HNil)
-    };
-    { $head:ident, $($tail:ident),+ } => {
-        $crate::hlist::HCons($head, record_struct_hlist_pattern!($($tail),+))
     };
 }
