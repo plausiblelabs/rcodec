@@ -3,7 +3,7 @@
 // All rights reserved.
 //
 
-#![feature(plugin)]
+#![feature(plugin, custom_attribute)]
 #![plugin(rcodec_macros)]
 
 #[macro_use]
@@ -49,6 +49,36 @@ fn assert_round_trip<T: 'static + Eq + Debug, C: AsCodecRef<T>>(c: C, value: &T,
 fn a_u8_value_should_round_trip() {
     assert_round_trip(uint8, &7u8, &Some(byte_vector!(7)));
 }
+
+// #[HListSupport]
+// #[derive(Debug, PartialEq, Eq, Clone)]
+// struct TestInnerStruct {
+//     f1: u8,
+//     f2: u8
+// }
+
+// #[HListSupport]
+// #[derive(Debug, PartialEq, Eq, Clone)]
+// struct TestStruct {
+//     foo: u8,
+//     bar: TestInnerStruct
+// }
+
+// #[test]
+// fn converting_struct_to_from_hlist_should_work() {
+//     {
+//         let s = TestInnerStruct::from_hlist(hlist!(1u8, 2u8));
+//         assert_eq!(s.f1, 1u8);
+//         assert_eq!(s.f2, 2u8);
+//     }
+
+//     {
+//         //let s = TestStruct::from_hlist(hlist!(7u8, TestInnerStruct::from_hlist(hlist!(1u8, 2u8))));
+//         //assert_eq!(s.foo, 7u8);
+//         //assert_eq!(s.bar, TestInnerStruct { f1: 1, f2: 2 });
+//         // TODO: Test to_hlist
+//     }
+// }
 
 record_struct!(
     TestRecordVersion,
