@@ -12,7 +12,6 @@ use std::num;
 use std::num::{Int, FromPrimitive, ToPrimitive};
 use std::rc::Rc;
 use std::vec;
-//use core;
 
 use error::Error;
 use byte_vector;
@@ -461,10 +460,28 @@ impl<H, S: AsHList<H>> Codec<S> for RecordStructCodec<H> {
 
 /// Override for the '|' operator that creates a new codec that injects additional context (e.g. in error messages)
 /// into the codec on the right-hand side.
+//
 // TODO: Can we have a single impl that works on AsCodecRef<T>?  Attempts so far like this:
 //   impl<T: 'static, TC: AsCodecRef<T>> core::ops::BitOr<TC> for &'static str {
-// have resulted in:
-//   error: the type parameter `T` is not constrained by the impl trait, self type, or predicates [E0207]
+//
+// TODO: The orphan checking rules were changed shortly before Rust 1.0.0 such that we can't implement
+// the BitOr trait with a Codec on the RHS.  Compilation fails with:
+//
+// src/codec.rs:475:1: 481:2 error: type parameter `T` must be used as the type parameter for some local type
+//                           (e.g. `MyStruct<T>`); only traits defined in the current crate can be implemented
+//                           for a type parameter [E0210]
+// src/codec.rs:475 impl<T: 'static> core::ops::BitOr<RcCodec<T>> for &'static str {
+// src/codec.rs:476     type Output = RcCodec<T>;
+// src/codec.rs:477 
+// src/codec.rs:478     fn bitor(self, rhs: RcCodec<T>) -> RcCodec<T> {
+// src/codec.rs:479         rcbox!(ContextCodec { codec: rhs.as_codec_ref(), context: self })
+// src/codec.rs:480     }
+//
+// See related discussion here:
+//   https://github.com/rust-lang/rust/issues/20749
+//
+// As a workaround, we handle context injection directly inside the hcodec! macro, sigh.
+//
 // impl<T: 'static> core::ops::BitOr<&'static Codec<T>> for &'static str {
 //     type Output = RcCodec<T>;
 
@@ -479,7 +496,10 @@ impl<H, S: AsHList<H>> Codec<S> for RecordStructCodec<H> {
 //         rcbox!(ContextCodec { codec: rhs.as_codec_ref(), context: self })
 //     }
 // }
-pub struct ContextCodec<T: 'static> { codec: CodecRef<T>, context: &'static str }
+pub fn with_context<T: 'static, TC: AsCodecRef<T>>(context: &'static str, codec: TC) -> RcCodec<T> {
+    rcbox!(ContextCodec { codec: codec.as_codec_ref(), context: context })
+}
+struct ContextCodec<T: 'static> { codec: CodecRef<T>, context: &'static str }
 impl<T> Codec<T> for ContextCodec<T> {
     fn encode(&self, value: &T) -> EncodeResult {
         self.codec.encode(value).map_err(|e| e.push_context(self.context))
@@ -802,6 +822,7 @@ mod tests {
     #[allow(unused_parens)]
     #[test]
     fn context_should_be_pushed_when_using_the_bitor_operator() {
+        // TODO: This test is disabled until we can figure out a solution for the operator overloading issue
         // let input = byte_vector::empty();
         // let codec =
         //     ("section" |
@@ -848,22 +869,22 @@ mod tests {
 
     #[test]
     fn the_hcodec_macro_should_work_with_a_mix_of_operations() {
-        // let m = byte_vector!(0xCA, 0xFE);
-        // let codec = hcodec!(
-        //     { "magic"      | constant(&m) } >>
-        //     { "version"    | uint8        } ::
-        //     { "junk_len"   | uint8        } >>= |junk_len| { hcodec!(
-        //         { "skip"   | ignore(1)                  } >>
-        //         { "first"  | uint8                      } ::
-        //         { "junk"   | ignore(*junk_len as usize) } >>
-        //         { "second" | uint8                      } ::
-        //         { "third"  | uint8                      }
-        //     )}
-        // );
+        let m = byte_vector!(0xCA, 0xFE);
+        let codec = hcodec!(
+            { "magic"      => constant(&m) } >>
+            { "version"    => uint8        } ::
+            { "junk_len"   => uint8        } >>= |junk_len| { hcodec!(
+                { "skip"   => ignore(1)                  } >>
+                { "first"  => uint8                      } ::
+                { "junk"   => ignore(*junk_len as usize) } >>
+                { "second" => uint8                      } ::
+                { "third"  => uint8                      }
+            )}
+        );
         
-        // let input = hlist!(1u8, 3u8, 7u8, 3u8, 1u8);
-        // let expected = byte_vector!(0xCA, 0xFE, 0x01, 0x03, 0x00, 0x07, 0x00, 0x00, 0x00, 0x03, 0x01);
-        // assert_round_trip(codec, &input, &Some(expected));
+        let input = hlist!(1u8, 3u8, 7u8, 3u8, 1u8);
+        let expected = byte_vector!(0xCA, 0xFE, 0x01, 0x03, 0x00, 0x07, 0x00, 0x00, 0x00, 0x03, 0x01);
+        assert_round_trip(codec, &input, &Some(expected));
     }
 
     //
