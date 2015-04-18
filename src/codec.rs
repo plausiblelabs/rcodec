@@ -533,6 +533,7 @@ impl<T> Codec<T> for DropLeftCodec<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use test::Bencher;
     use std::fmt::Debug;
     use error::Error;
     use byte_vector;
@@ -597,7 +598,7 @@ mod tests {
     fn a_u8_value_should_round_trip() {
         assert_round_trip(uint8, &7, &Some(byte_vector!(7)));
     }
-    
+
     #[test]
     fn an_i8_value_should_round_trip() {
         assert_round_trip(int8, &7, &Some(byte_vector!(7)));
@@ -647,6 +648,39 @@ mod tests {
         assert_round_trip(int64_l, &0x1234567890abcdef, &Some(byte_vector!(0xef, 0xcd, 0xab, 0x90, 0x78, 0x56, 0x34, 0x12)));
         assert_round_trip(int64_l, &-2, &Some(byte_vector!(0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff)));
     }
+
+    macro_rules! bench_int_codec {
+        { $codec:ident, $enc:ident, $dec:ident } => {
+            #[bench]
+            fn $enc(b: &mut Bencher) {
+                b.iter(|| $codec.encode(&7));
+            }
+
+            #[bench]
+            fn $dec(b: &mut Bencher) {
+                let bv = byte_vector!(0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07);
+                b.iter(|| $codec.decode(&bv));
+            }
+        };
+    }
+
+    bench_int_codec!(uint8,    bench_enc_uint8,    bench_dec_uint8);
+    bench_int_codec!(int8,     bench_enc_int8,     bench_dec_int8);
+
+    bench_int_codec!(uint16,   bench_enc_uint16,   bench_dec_uint16);
+    bench_int_codec!(int16,    bench_enc_int16,    bench_dec_int16);
+    bench_int_codec!(uint16_l, bench_enc_uint16_l, bench_dec_uint16_l);
+    bench_int_codec!(int16_l,  bench_enc_int16_l,  bench_dec_int16_l);
+
+    bench_int_codec!(uint32,   bench_enc_uint32,   bench_dec_uint32);
+    bench_int_codec!(int32,    bench_enc_int32,    bench_dec_int32);
+    bench_int_codec!(uint32_l, bench_enc_uint32_l, bench_dec_uint32_l);
+    bench_int_codec!(int32_l,  bench_enc_int32_l,  bench_dec_int32_l);
+
+    bench_int_codec!(uint64,   bench_enc_uint64,   bench_dec_uint64);
+    bench_int_codec!(int64,    bench_enc_int64,    bench_dec_int64);
+    bench_int_codec!(uint64_l, bench_enc_uint64_l, bench_dec_uint64_l);
+    bench_int_codec!(int64_l,  bench_enc_int64_l,  bench_dec_int64_l);
 
     //
     // Ignore codec
@@ -801,6 +835,20 @@ mod tests {
         assert_eq!(codec.encode(&input).unwrap_err().message(), "Length of encoded value (256 bytes) is greater than maximum value (255) of length type");
     }
 
+    #[bench]
+    fn bench_enc_variable_size_bytes(b: &mut Bencher) {
+        let input = byte_vector!(7, 1, 2, 3, 4);
+        let codec = variable_size_bytes(uint16, identity_bytes);
+        b.iter(|| codec.encode(&input));
+    }
+
+    #[bench]
+    fn bench_dec_variable_size_bytes(b: &mut Bencher) {
+        let input = byte_vector!(0, 5, 7, 1, 2, 3, 4);
+        let codec = variable_size_bytes(uint16, identity_bytes);
+        b.iter(|| codec.decode(&input));
+    }
+
     //
     // Eager bytes codec
     //
@@ -880,6 +928,44 @@ mod tests {
         assert_round_trip(codec, &input, &Some(expected));
     }
 
+    #[bench]
+    fn bench_enc_hlist(b: &mut Bencher) {
+        let m = byte_vector!(0xCA, 0xFE);
+        let codec = hcodec!(
+            { "magic"      => constant(&m) } >>
+            { "version"    => uint8        } ::
+            { "junk_len"   => uint8        } >>= |junk_len| { hcodec!(
+                { "skip"   => ignore(1)                  } >>
+                { "first"  => uint8                      } ::
+                { "junk"   => ignore(*junk_len as usize) } >>
+                { "second" => uint8                      } ::
+                { "third"  => uint8                      }
+            )}
+        );
+        
+        let input = hlist!(1u8, 3u8, 7u8, 3u8, 1u8);
+        b.iter(|| codec.encode(&input));
+    }
+
+    #[bench]
+    fn bench_dec_hlist(b: &mut Bencher) {
+        let m = byte_vector!(0xCA, 0xFE);
+        let codec = hcodec!(
+            { "magic"      => constant(&m) } >>
+            { "version"    => uint8        } ::
+            { "junk_len"   => uint8        } >>= |junk_len| { hcodec!(
+                { "skip"   => ignore(1)                  } >>
+                { "first"  => uint8                      } ::
+                { "junk"   => ignore(*junk_len as usize) } >>
+                { "second" => uint8                      } ::
+                { "third"  => uint8                      }
+            )}
+        );
+        
+        let input = byte_vector!(0xCA, 0xFE, 0x01, 0x03, 0x00, 0x07, 0x00, 0x00, 0x00, 0x03, 0x01);
+        b.iter(|| codec.decode(&input));
+    }
+    
     //
     // Struct conversion codec
     //

@@ -9,6 +9,9 @@
 // The following suppresses warnings related to use of unstable std::slice::bytes::copy_memory() function.
 #![feature(core)]
 
+// The following allows for benchmark tests.
+#![feature(test)]
+
 // The following allows for macro debugging via trace_macros(true/false).
 #![feature(trace_macros)]
 
@@ -37,3 +40,7 @@ extern crate core;
 
 // The following is used for integral codecs.
 extern crate num;
+
+// The following is used for benchmark tests.
+extern crate test;
+
