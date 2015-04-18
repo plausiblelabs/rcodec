@@ -9,10 +9,10 @@
 use std::fmt::Display;
 use std::mem::size_of;
 use std::ptr;
+use std::slice;
 use std::rc::Rc;
-use std::vec;
 
-use num::traits::{PrimInt, Unsigned, FromPrimitive, ToPrimitive, cast};
+use num::traits::{PrimInt, Unsigned, FromPrimitive};
 
 use error::Error;
 use byte_vector;
@@ -143,7 +143,7 @@ enum ByteOrder {
 }
 
 struct IntegralCodec { order: ByteOrder }
-impl<T: PrimInt + FromPrimitive> Codec<T> for IntegralCodec {
+impl<T: PrimInt> Codec<T> for IntegralCodec {
     fn encode(&self, value: &T) -> EncodeResult {
         // TODO: Could use macros to avoid this step
         let swapped = match self.order {
@@ -162,22 +162,20 @@ impl<T: PrimInt + FromPrimitive> Codec<T> for IntegralCodec {
 
     fn decode(&self, bv: &ByteVector) -> DecodeResult<T> {
         let size = size_of::<T>();
-        let mut buf = [0u8; byte_vector::DIRECT_VALUE_SIZE_LIMIT];
-        bv.read(&mut buf, 0, size).and_then(|_size| {
-            let mut value: T = T::zero();
-            unsafe {
-                let src_ptr: *const u8 = &buf as *const u8;
-                let dst_ptr: *mut u8 = (&mut value as *mut T) as *mut u8;
-                ptr::copy(src_ptr, dst_ptr, size);
-            }
-            let swapped = match self.order {
-                ByteOrder::Big => value.to_be(),
-                ByteOrder::Little => value.to_le()
-            };
-            bv.drop(size).map(|remainder| {
-                DecoderResult { value: swapped, remainder: remainder }
+        let mut value: T = T::zero();
+        return unsafe {
+            let dst_ptr: *mut u8 = (&mut value as *mut T) as *mut u8;
+            let mut buf = slice::from_raw_parts_mut(dst_ptr, size);
+            bv.read(&mut buf, 0, size).and_then(|_size| {
+                let swapped = match self.order {
+                    ByteOrder::Big => value.to_be(),
+                    ByteOrder::Little => value.to_le()
+                };
+                bv.drop(size).map(|remainder| {
+                    DecoderResult { value: swapped, remainder: remainder }
+                })
             })
-        })
+        }
     }
 }
 
@@ -280,13 +278,13 @@ impl<T> Codec<T> for FixedSizeCodec<T> {
 /// Codec for length-delimited values.
 ///   - Encodes by encoding the length (in bytes) of the value followed by the value itself.
 ///   - Decodes by decoding the length and then attempting to decode the value that follows.
-pub fn variable_size_bytes<L: 'static + PrimInt + Unsigned + ToPrimitive + FromPrimitive + Display, V: 'static, LC: AsCodecRef<L>, VC: AsCodecRef<V>>(len_codec: LC, val_codec: VC) -> RcCodec<V>
+pub fn variable_size_bytes<L: 'static + PrimInt + Unsigned + FromPrimitive + Display, V: 'static, LC: AsCodecRef<L>, VC: AsCodecRef<V>>(len_codec: LC, val_codec: VC) -> RcCodec<V>
     where L::FromStrRadixErr: 'static
 {
     rcbox!(VariableSizeCodec { len_codec: len_codec.as_codec_ref(), val_codec: val_codec.as_codec_ref() })
 }
-struct VariableSizeCodec<L: 'static + PrimInt + Unsigned + ToPrimitive + FromPrimitive + Display, V: 'static> { len_codec: CodecRef<L>, val_codec: CodecRef<V> }
-impl<L: PrimInt + Unsigned + ToPrimitive + FromPrimitive + Display, V> Codec<V> for VariableSizeCodec<L, V> {
+struct VariableSizeCodec<L: 'static + PrimInt + Unsigned + FromPrimitive + Display, V: 'static> { len_codec: CodecRef<L>, val_codec: CodecRef<V> }
+impl<L: PrimInt + Unsigned + FromPrimitive + Display, V> Codec<V> for VariableSizeCodec<L, V> {
     fn encode(&self, value: &V) -> EncodeResult {
         // Encode the value, then prepend the length of the encoded value
         self.val_codec.encode(&value).and_then(|encoded_val| {
