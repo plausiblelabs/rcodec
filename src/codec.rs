@@ -162,40 +162,20 @@ impl<T: PrimInt + FromPrimitive> Codec<T> for IntegralCodec {
 
     fn decode(&self, bv: &ByteVector) -> DecodeResult<T> {
         let size = size_of::<T>();
-        let v = &mut vec::from_elem(0u8, size);
-        bv.read(v, 0, size).and_then(|_size| {
-            let value = match size {
-                1 => {
-                    // i8 requires special handling since it can't hold values >= 128.
-                    // We convert the byte value to an i16 and then work with it to
-                    // get around that limitation. Interpretation as two's complement
-                    // is done manually by subtracting if the type is signed and
-                    // the unsigned byte value is in the upper (negative) half of
-                    // the range.
-                    let mut value: i16 = cast(v[0]).unwrap();
-                    let tmax: i16 = cast(T::max_value()).unwrap();
-                    if value > tmax {
-                        // This condition is only true if T is i8 and the value
-                        // is negative. Convert from the serialized unsigned byte
-                        // to the deserialized signed integer by subtracting 2^8.
-                        value -= 256;
-                    }
-                    cast(value).unwrap()
-                }
-                _ => {
-                    let mut value = T::zero();
-                    for i in 0..size {
-                        let byte = T::from_u8(v[i]).unwrap();
-                        value = match self.order {
-                            ByteOrder::Big => (value << 8) | byte,
-                            ByteOrder::Little => value | (byte << (i * 8))
-                        };
-                    }
-                    value
-                }
+        let mut buf = [0u8; byte_vector::DIRECT_VALUE_SIZE_LIMIT];
+        bv.read(&mut buf, 0, size).and_then(|_size| {
+            let mut value: T = T::zero();
+            unsafe {
+                let src_ptr: *const u8 = &buf as *const u8;
+                let dst_ptr: *mut u8 = (&mut value as *mut T) as *mut u8;
+                ptr::copy(src_ptr, dst_ptr, size);
+            }
+            let swapped = match self.order {
+                ByteOrder::Big => value.to_be(),
+                ByteOrder::Little => value.to_le()
             };
             bv.drop(size).map(|remainder| {
-                DecoderResult { value: value, remainder: remainder }
+                DecoderResult { value: swapped, remainder: remainder }
             })
         })
     }
