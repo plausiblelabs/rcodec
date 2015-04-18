@@ -8,6 +8,7 @@
 
 use std::fmt::Display;
 use std::mem::size_of;
+use std::ptr;
 use std::rc::Rc;
 use std::vec;
 
@@ -144,27 +145,19 @@ enum ByteOrder {
 struct IntegralCodec { order: ByteOrder }
 impl<T: PrimInt + FromPrimitive> Codec<T> for IntegralCodec {
     fn encode(&self, value: &T) -> EncodeResult {
-        // TODO: Use direct() once it's implemented
+        // TODO: Could use macros to avoid this step
+        let swapped = match self.order {
+            ByteOrder::Big => value.to_be(),
+            ByteOrder::Little => value.to_le()
+        };
         let size = size_of::<T>();
-        let mut v = Vec::<u8>::with_capacity(size);
-        for i in 0..size {
-            let shift = match self.order {
-                ByteOrder::Big => (size - i - 1) * 8,
-                ByteOrder::Little => i * 8
-            };
-            let byte: u8 = match size {
-                1 => {
-                    // i8 requires special handling since it can't represent 0xff.
-                    // We do the same calculations, but using i16 to avoid overflow.
-                    // This same code path also works for u8, so we can just check the size.
-                    let bigger: i16 = cast(*value).unwrap();
-                    cast(bigger & 0xff).unwrap()
-                }
-                _ => cast((*value >> shift) & T::from_u8(0xff).unwrap()).unwrap()
-            };
-            v.push(byte);
+        let mut v = [0u8; byte_vector::DIRECT_VALUE_SIZE_LIMIT];
+        unsafe {
+            let src_ptr: *const u8 = (&swapped as *const T) as *const u8;
+            let dst_ptr: *mut u8 = v.as_mut_ptr();
+            ptr::copy(src_ptr, dst_ptr, size);
         }
-        Ok(byte_vector::buffered(&v))
+        Ok(byte_vector::direct(v, size))
     }
 
     fn decode(&self, bv: &ByteVector) -> DecodeResult<T> {

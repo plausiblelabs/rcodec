@@ -379,6 +379,11 @@ pub fn buffered(bytes: &Vec<u8>) -> ByteVector {
     ByteVector { storage: Rc::new(storage) }
 }
 
+/// Return a byte vector that consumes the given [u8], used to store primitive values directly.
+pub fn direct(bytes: [u8; DIRECT_VALUE_SIZE_LIMIT], length: usize) -> ByteVector {
+    ByteVector { storage: Rc::new(StorageType::DirectValue { bytes: bytes, length: length }) }
+}
+
 /// Return a byte vector whose contents come from a file.
 pub fn file(path: &Path) -> Result<ByteVector, Error> {
     // Open the file at the given path and create a ByteVector around it
