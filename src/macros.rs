@@ -100,7 +100,7 @@ macro_rules! hcodec {
         hnil_codec
     };
     { { $($head:tt)+ } } => {
-        hlist_prepend_codec(hcodec_block!($($head)+), hnil_codec)
+        hlist_prepend_codec(hcodec_block!($($head)+), hnil_codec())
     };
     { { $($head:tt)+ } :: $($tail:tt)+ } => {
         hlist_prepend_codec(hcodec_block!($($head)+), hcodec!($($tail)+))
