@@ -68,7 +68,7 @@ macro_rules! hlist {
 #[macro_export]
 macro_rules! byte_vector {
     { $($byte:expr),* } => {
-        $crate::byte_vector::buffered(&vec!($($byte),*))
+        $crate::byte_vector::from_vec(vec!($($byte),*))
     };
 }
 

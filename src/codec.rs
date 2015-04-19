@@ -157,7 +157,7 @@ impl<T: PrimInt> Codec<T> for IntegralCodec {
             let dst_ptr: *mut u8 = v.as_mut_ptr();
             ptr::copy(src_ptr, dst_ptr, size);
         }
-        Ok(byte_vector::direct(v, size))
+        Ok(byte_vector::from_slice(v, size))
     }
 
     fn decode(&self, bv: &ByteVector) -> DecodeResult<T> {
@@ -321,7 +321,7 @@ pub fn eager<C: AsCodecRef<ByteVector>>(bv_codec: C) -> RcCodec<Vec<u8>> {
 struct EagerCodec { bv_codec: CodecRef<ByteVector> }
 impl Codec<Vec<u8>> for EagerCodec {
     fn encode(&self, value: &Vec<u8>) -> EncodeResult {
-        self.bv_codec.encode(&byte_vector::buffered(value))
+        self.bv_codec.encode(&byte_vector::from_vec_copy(value))
     }
 
     fn decode(&self, bv: &ByteVector) -> DecodeResult<Vec<u8>> {

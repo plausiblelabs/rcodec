@@ -366,9 +366,14 @@ pub fn empty() -> ByteVector {
     ByteVector { storage: Rc::new(StorageType::Empty) }
 }
 
+/// Return a byte vector that consumes the contents of the given `Vec`.
+pub fn from_vec(bytes: Vec<u8>) -> ByteVector {
+    let storage = StorageType::Heap { bytes: bytes };
+    ByteVector { storage: Rc::new(storage) }
+}
+
 /// Return a byte vector that stores a copy of the given bytes on the heap.
-pub fn buffered(bytes: &Vec<u8>) -> ByteVector {
-    // TODO: For now we only support copying, so that the returned ByteVector owns a copy
+pub fn from_vec_copy(bytes: &Vec<u8>) -> ByteVector {
     let storage = if bytes.len() <= DIRECT_VALUE_SIZE_LIMIT {
         let mut array = [0u8; DIRECT_VALUE_SIZE_LIMIT];
         std::slice::bytes::copy_memory(bytes, &mut array);
@@ -379,8 +384,8 @@ pub fn buffered(bytes: &Vec<u8>) -> ByteVector {
     ByteVector { storage: Rc::new(storage) }
 }
 
-/// Return a byte vector that consumes the given [u8], used to store primitive values directly.
-pub fn direct(bytes: [u8; DIRECT_VALUE_SIZE_LIMIT], length: usize) -> ByteVector {
+/// Return a byte vector that consumes the given slice, used to store primitive values directly.
+pub fn from_slice(bytes: [u8; DIRECT_VALUE_SIZE_LIMIT], length: usize) -> ByteVector {
     ByteVector { storage: Rc::new(StorageType::DirectValue { bytes: bytes, length: length }) }
 }
 
@@ -432,7 +437,7 @@ mod tests {
 
     #[test]
     fn byte_vector_macro_should_work() {
-        let bv1 = buffered(&vec!(1, 2, 3, 4));
+        let bv1 = from_vec(vec!(1, 2, 3, 4));
         let bv2 = byte_vector!(1, 2, 3, 4);
         assert_eq!(bv1, bv2);
     }
@@ -440,8 +445,8 @@ mod tests {
     #[test]
     fn clone_should_work() {
         let bytes = vec!(1, 2, 3, 4);
-        let lhs = buffered(&bytes);
-        let rhs = buffered(&bytes);
+        let lhs = from_vec_copy(&bytes);
+        let rhs = from_vec_copy(&bytes);
         let bv1 = append(&lhs, &rhs);
         let bv2 = bv1.clone();
         assert_eq!(bv1, bv2);
@@ -458,15 +463,15 @@ mod tests {
     }
 
     #[test]
-    fn length_of_buffered_vector_should_be_correct() {
+    fn length_of_heap_vector_should_be_correct() {
         assert_eq!(byte_vector!(1, 2, 3, 4).length(), 4);
     }
 
     #[test]
     fn append_should_work() {
         let bytes = vec!(1, 2, 3, 4);
-        let lhs = buffered(&bytes);
-        let rhs = buffered(&bytes);
+        let lhs = from_vec_copy(&bytes);
+        let rhs = from_vec_copy(&bytes);
 
         let bv = append(&lhs, &rhs);
         assert_eq!(bv.length(), 8);
@@ -477,22 +482,22 @@ mod tests {
     
     #[test]
     fn big_appends_should_work() {
-        let small = buffered(&vec![1; DIRECT_VALUE_SIZE_LIMIT]);
-        let big = buffered(&vec![2; DIRECT_VALUE_SIZE_LIMIT + 1]);
+        let small = from_vec(vec![1; DIRECT_VALUE_SIZE_LIMIT]);
+        let big = from_vec(vec![2; DIRECT_VALUE_SIZE_LIMIT + 1]);
         
         let smallbig = append(&small, &big);
         let mut smallbig_expected = vec![1; DIRECT_VALUE_SIZE_LIMIT];
         smallbig_expected.extend(vec![2; DIRECT_VALUE_SIZE_LIMIT + 1]);
-        assert_eq!(smallbig, buffered(&smallbig_expected));
+        assert_eq!(smallbig, from_vec(smallbig_expected));
         
         let bigsmall = append(&big, &small);
         let mut bigsmall_expected = vec![2; DIRECT_VALUE_SIZE_LIMIT + 1];
         bigsmall_expected.extend(vec![1; DIRECT_VALUE_SIZE_LIMIT]);
-        assert_eq!(bigsmall, buffered(&bigsmall_expected));
+        assert_eq!(bigsmall, from_vec(bigsmall_expected));
         
         let bigbig = append(&big, &big);
         let bigbig_expected = vec![2; DIRECT_VALUE_SIZE_LIMIT * 2 + 2];
-        assert_eq!(bigbig, buffered(&bigbig_expected));
+        assert_eq!(bigbig, from_vec(bigbig_expected));
     }
 
     #[test]
@@ -515,7 +520,7 @@ mod tests {
     }
 
     #[test]
-    fn read_should_work_for_buffered_vector() {
+    fn read_should_work_for_heap_vector() {
         let bv = byte_vector!(1, 2, 3, 4);
 
         let buf: &mut[u8] = &mut[0, 0];
@@ -527,8 +532,8 @@ mod tests {
     #[test]
     fn read_should_work_for_append_vector() {
         let bytes = vec!(1, 2, 3, 4);
-        let lhs = buffered(&bytes);
-        let rhs = buffered(&bytes);
+        let lhs = from_vec_copy(&bytes);
+        let rhs = from_vec_copy(&bytes);
         let bv = append(&lhs, &rhs);
 
         let buf: &mut[u8] = &mut[0, 0];
@@ -558,8 +563,8 @@ mod tests {
     #[test]
     fn to_vec_should_work() {
         let input = vec!(1, 2, 3, 4);
-        let lhs = buffered(&input);
-        let rhs = buffered(&input);
+        let lhs = from_vec_copy(&input);
+        let rhs = from_vec_copy(&input);
         let bv = append(&lhs, &rhs);
 
         let result = bv.to_vec();
@@ -576,7 +581,7 @@ mod tests {
     }
 
     #[test]
-    fn take_should_work_for_buffered_vector() {
+    fn take_should_work_for_heap_vector() {
         let bv = byte_vector!(1, 2, 3, 4);
 
         let result = bv.take(2);
@@ -586,8 +591,8 @@ mod tests {
     #[test]
     fn take_should_work_for_append_vector() {
         let bytes = vec!(1, 2, 3, 4);
-        let lhs = buffered(&bytes);
-        let rhs = buffered(&bytes);
+        let lhs = from_vec_copy(&bytes);
+        let rhs = from_vec_copy(&bytes);
         let bv = append(&lhs, &rhs);
 
         // Verify case where take takes part of lhs only
@@ -613,7 +618,7 @@ mod tests {
     }
 
     #[test]
-    fn drop_should_work_for_buffered_vector() {
+    fn drop_should_work_for_heap_vector() {
         let bv = byte_vector!(1, 2, 3, 4);
 
         let result = bv.drop(2);
@@ -623,8 +628,8 @@ mod tests {
     #[test]
     fn drop_should_work_for_append_vector() {
         let bytes = vec!(1, 2, 3, 4);
-        let lhs = buffered(&bytes);
-        let rhs = buffered(&bytes);
+        let lhs = from_vec_copy(&bytes);
+        let rhs = from_vec_copy(&bytes);
         let bv = append(&lhs, &rhs);
 
         // Verify case where drop takes part of lhs only
