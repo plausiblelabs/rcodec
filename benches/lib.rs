@@ -31,14 +31,11 @@ record_struct!(
     meta_section: TestSectionRecord,
     data_section: TestSectionRecord);
 
-// TODO: Oops, looks like the record_struct! macro can't handle generic types yet, so let's alias here to avoid brackets
-pub type VecU8 = Vec<u8>;
-
 record_struct!(
     TestFileItem,
     header: TestFileHeader,
-    metadata: VecU8,
-    data: VecU8);
+    metadata: Vec<u8>,
+    data: Vec<u8>);
 
 const FILE_HEADER_SIZE: u8 = 6;
     
