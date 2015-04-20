@@ -139,13 +139,13 @@ macro_rules! struct_codec {
     };
 }
 
-/// Defines a struct that has derived impls for some common traits along with an `AsHList`
-/// implementation that takes all fields into account.
+/// Defines a struct that has derived impls for some common traits along with implementations
+/// of the `FromHList` and `ToHList` traits, taking all fields into account.
 #[macro_export]
 macro_rules! record_struct {
     { $stype:ident, $($fieldname:ident: $fieldtype:ty),+ } => {
         #[derive(Debug, PartialEq, Eq, Clone)]
-        #[AsHList]
+        #[HListSupport]
         pub struct $stype {
             $($fieldname: $fieldtype),+
         }

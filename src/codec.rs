@@ -452,21 +452,15 @@ impl<H, T, HC, F> Codec for HListFlatPrependCodec<HC, F>
     }
 }
 
-/// Trait implemented by structs created by the record_struct! macro.
-pub trait AsHList<T> {
-    fn from_hlist(hlist: T) -> Self;
-    fn to_hlist(&self) -> T;
-}
-
 /// Codec for structs created by the record_struct! macro.
 pub fn struct_codec<H, S, HC>(hlist_codec: HC) -> RecordStructCodec<S, HC::IntoCodecT>
-    where S: AsHList<H>, HC: IntoCodec<Value=H>
+    where H: HList, S: FromHList<H> + ToHList<H>, HC: IntoCodec<Value=H>
 {
     RecordStructCodec { hlist_codec: hlist_codec.into_codec(), _marker: PhantomData::<S> }
 }
 pub struct RecordStructCodec<S, HC> { hlist_codec: HC, _marker: PhantomData<S> }
 impl<H, S, HC> Codec for RecordStructCodec<S, HC>
-    where S: AsHList<H>, HC: Codec<Value=H>
+    where H: HList, S: FromHList<H> + ToHList<H>, HC: Codec<Value=H>
 {
     type Value = S;
     
