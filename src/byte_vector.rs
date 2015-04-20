@@ -156,9 +156,12 @@ impl ByteVector {
                     })
                 }
             },
-            StorageType::View { ref voffset, .. } => {
-                // Create a new view around this view's underlying storage
-                Ok(Rc::new(StorageType::View { vstorage: storage.clone(), voffset: voffset + offset, vlen: len }))
+            StorageType::View { ref vstorage, ref voffset, .. } => {
+                // Verify that voffset + offset will not overflow
+                if std::usize::MAX - offset < *voffset {
+                    return Err(Error::new(format!("Requested view offset of {off} plus storage offset {voff} would overflow maximum value of usize", off = offset, voff = *voffset)));
+                }
+                ByteVector::view(vstorage, *voffset + offset, len)
             },
             StorageType::File { .. } => {
                 Ok(Rc::new(StorageType::View { vstorage: (*storage).clone(), voffset: offset, vlen: len }))
@@ -318,6 +321,11 @@ impl StorageType {
                 }
             },
             StorageType::View { ref vstorage, ref voffset, ref vlen } => {
+                // Verify that voffset + offset won't overflow
+                if std::usize::MAX - offset < *voffset {
+                    return Err(Error::new(format!("Requested read offset of {off} plus storage offset {voff} would overflow maximum value of usize", off = offset, voff = *voffset)));
+                }
+                
                 // Let the backing storage perform the read
                 let count = std::cmp::min(*vlen, len);
                 vstorage.read(buf, *voffset + offset, count)
@@ -561,6 +569,19 @@ mod tests {
         }
     }
 
+    #[test]
+    fn read_should_work_for_nested_views() {
+        let bv = byte_vector!(1, 2, 3, 4);
+        let view0 = bv.drop(1).unwrap();
+        let view1 = view0.drop(1).unwrap();
+
+        let buf: &mut[u8] = &mut[0, 0];
+        assert_eq!(view1.read(buf, 0, 2).unwrap(), 2);
+        assert_eq!(buf, [3, 4]);
+
+        // TODO: Also test overflow case
+    }
+    
     #[test]
     fn to_vec_should_work() {
         let input = vec!(1, 2, 3, 4);
