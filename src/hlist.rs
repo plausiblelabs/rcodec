@@ -6,28 +6,32 @@
 //   https://github.com/epsilonz/shoggoth.rs
 //
 
+/// A heterogeneous list that can hold elements of different types.
 pub trait HList {
+    /// Creates a new `HCons` with the given `X` value in head position.
     fn cons<X>(self, x: X) -> HCons<X, Self> where Self: Sized {
         HCons(x, self)
     }
 }
 
+/// An empty `HList` used as the terminal element.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct HNil;
 
 impl HList for HNil {
 }
 
+/// The "cons" of a head element of type `H` and a tail `HList`.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct HCons<H, T: HList>(pub H, pub T);
 
 impl<H, T: HList> HCons<H, T> {
-    /// Return the head element of this list.
+    /// Returns a reference to the head element of this list.
     pub fn head(&self) -> &H {
         &self.0
     }
 
-    /// Return the tail of this list.
+    /// Returns a reference to the tail of this list.
     pub fn tail(&self) -> &T {
         &self.1
     }

@@ -30,17 +30,17 @@ pub struct ByteVector {
 }
 
 impl ByteVector {
-    /// Return the length, in bytes.
+    /// Returns the length, in bytes.
     pub fn length(&self) -> usize {
         self.storage.length()
     }
 
-    /// Read up to a maximum of `len` bytes at `offset` from this byte vector into the given buffer.
+    /// Reads up to a maximum of `len` bytes at `offset` from this byte vector into the given buffer.
     pub fn read(&self, buf: &mut [u8], offset: usize, len: usize) -> Result<usize, Error> {
         self.storage.read(buf, offset, len)
     }
 
-    /// Convert this byte vector to a Vec<u8> instance. Note that this will copy all of the underlying
+    /// Converts this byte vector to a `Vec<u8>` instance. Note that this will copy all of the underlying
     /// data, so beware the increased memory usage.
     pub fn to_vec(&self) -> Result<Vec<u8>, Error> {
         // Allocate a buffer large enough to hold the backing bytes
@@ -51,7 +51,7 @@ impl ByteVector {
         self.read(&mut vec[..], 0, self.length()).map(|_res| vec)
     }
     
-    /// Return a new byte vector containing exactly `len` bytes from this byte vector, or an
+    /// Returns a new byte vector containing exactly `len` bytes from this byte vector, or an
     /// error if insufficient data is available.
     pub fn take(&self, len: usize) -> Result<ByteVector, Error> {
         ByteVector::view(&self.storage, 0, len).map(|storage| {
@@ -59,7 +59,7 @@ impl ByteVector {
         })
     }
     
-    /// Return a new byte vector containing all but the first `len` bytes of this byte vector,
+    /// Returns a new byte vector containing all but the first `len` bytes of this byte vector,
     /// or an error if dropping `len` bytes would overrun the end of this byte vector.
     pub fn drop(&self, len: usize) -> Result<ByteVector, Error> {
         let storage_len = self.length();
@@ -72,7 +72,7 @@ impl ByteVector {
         })
     }
 
-    /// Return a new vector of length `len` containing zero or more low bytes followed by this byte vector's contents.
+    /// Returns a new vector of length `len` containing zero or more low bytes followed by this byte vector's contents.
     /// If this vector is longer than `len` bytes, an error will be returned.
     pub fn pad_left(&self, len: usize) -> Result<ByteVector, Error> {
         let storage_len = self.length();
@@ -85,7 +85,7 @@ impl ByteVector {
         }
     }
 
-    /// Return a new vector of length `len` containing this byte vector's contents followed by zero or more low bytes.
+    /// Returns a new vector of length `len` containing this byte vector's contents followed by zero or more low bytes.
     /// If this vector is longer than `len` bytes, an error will be returned.
     pub fn pad_right(&self, len: usize) -> Result<ByteVector, Error> {
         let storage_len = self.length();
@@ -98,7 +98,7 @@ impl ByteVector {
         }
     }
     
-    /// Return a projection at `offset` with `len` bytes within the given storage.
+    /// Returns a projection at `offset` with `len` bytes within the given storage.
     fn view(storage: &Rc<StorageType>, offset: usize, len: usize) -> Result<Rc<StorageType>, Error> {
         // Verify that offset is within our storage bounds
         let storage_len = storage.length();
@@ -222,7 +222,8 @@ impl Debug for WrappedFile {
     }
 }
 
-/// The maximum size that can be used with a DirectValue storage type.
+/// The maximum size that can be used with a `DirectValue` storage type.
+#[doc(hidden)]
 pub const DIRECT_VALUE_SIZE_LIMIT: usize = 8;
 
 /// A sum type over all supported storage object types.
@@ -239,7 +240,7 @@ enum StorageType {
 }
 
 impl StorageType {
-    /// Return the length, in bytes.
+    /// Returns the length, in bytes.
     fn length(&self) -> usize {
         match *self {
             StorageType::Empty => 0,
@@ -251,7 +252,7 @@ impl StorageType {
         }
     }
 
-    /// Read up to a maximum of length bytes at offset from this byte vector into the given buffer.
+    /// Reads up to a maximum of length bytes at offset from this byte vector into the given buffer.
     fn read(&self, buf: &mut [u8], offset: usize, len: usize) -> Result<usize, Error> {
         // Verify that offset is within our storage bounds
         let storage_len = self.length();
@@ -359,20 +360,20 @@ impl StorageType {
     }
 }
 
-/// An empty byte vector.
+/// Returns an empty byte vector.
 // TODO: Statics can't refer to heap-allocated data, so we can't have a single instance here
 //pub static EMPTY: ByteVector = ByteVector { storage: Rc::new(StorageType::Empty) };
 pub fn empty() -> ByteVector {
     ByteVector { storage: Rc::new(StorageType::Empty) }
 }
 
-/// Return a byte vector that consumes the contents of the given `Vec`.
+/// Returns a byte vector that consumes the contents of the given `Vec<u8>`.
 pub fn from_vec(bytes: Vec<u8>) -> ByteVector {
     let storage = StorageType::Heap { bytes: bytes };
     ByteVector { storage: Rc::new(storage) }
 }
 
-/// Return a byte vector that stores a copy of the given bytes on the heap.
+/// Returns a byte vector that stores a copy of the given bytes on the heap.
 pub fn from_vec_copy(bytes: &Vec<u8>) -> ByteVector {
     let storage = if bytes.len() <= DIRECT_VALUE_SIZE_LIMIT {
         let mut array = [0u8; DIRECT_VALUE_SIZE_LIMIT];
@@ -384,12 +385,12 @@ pub fn from_vec_copy(bytes: &Vec<u8>) -> ByteVector {
     ByteVector { storage: Rc::new(storage) }
 }
 
-/// Return a byte vector that consumes the given slice, used to store primitive values directly.
+/// Returns a byte vector that consumes the given slice, used to store primitive values directly.
 pub fn from_slice(bytes: [u8; DIRECT_VALUE_SIZE_LIMIT], length: usize) -> ByteVector {
     ByteVector { storage: Rc::new(StorageType::DirectValue { bytes: bytes, length: length }) }
 }
 
-/// Return a byte vector whose contents come from a file.
+/// Returns a byte vector whose contents come from a file.
 pub fn file(path: &Path) -> Result<ByteVector, Error> {
     // Open the file at the given path and create a ByteVector around it
     let result = forcomp!({
@@ -410,7 +411,7 @@ pub fn file(path: &Path) -> Result<ByteVector, Error> {
     result.map_err(|io_err| Error::new(format!("Failed to open file: {}", error::Error::description(&io_err))))
 }
 
-/// Return a byte vector that contains the contents of lhs followed by the contents of rhs.
+/// Returns a byte vector that contains the contents of `lhs` followed by the contents of `rhs`.
 pub fn append(lhs: &ByteVector, rhs: &ByteVector) -> ByteVector {
     if lhs.length() == 0 && rhs.length() == 0 {
         empty()
@@ -424,7 +425,7 @@ pub fn append(lhs: &ByteVector, rhs: &ByteVector) -> ByteVector {
     }
 }
 
-/// Return a byte vector containing `value` repeated `count` times.
+/// Returns a byte vector containing `value` repeated `count` times.
 pub fn fill(value: u8, count: usize) -> ByteVector {
     let storage = StorageType::Heap { bytes: vec![value; count] };
     ByteVector { storage: Rc::new(storage) }
