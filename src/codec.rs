@@ -19,6 +19,16 @@ use byte_vector;
 use byte_vector::ByteVector;
 use hlist::*;
 
+// TODO: This API style is similar to that used in the std::iter module, where codec creation functions
+// return a concrete struct, and functions accept an IntoCodec to allow for accepting different kinds of
+// Codec implementations as arguments.  This is counter to typical API design where would we try to hide
+// the implementation of each concrete type behind a trait (i.e., the functions would return a Codec<T>
+// instead of e.g. FixedSizeCodec).  The style used here and in std::iter gets the job done but most
+// folks agree that it would be better if Rust supported the notion of abstract return types.  There
+// have been a few proposals for post-1.0 that we should take advantage of once available:
+//   https://github.com/rust-lang/rfcs/pull/105
+//   https://github.com/aturon/rfcs/blob/62fe495d35f279a24eaef9b61dbe491145c2fb82/0000-abstract-return-types.md
+
 /// Implements encoding and decoding of values of type `Value`.
 pub trait Codec {
     /// The value type.
@@ -412,13 +422,13 @@ impl<H, T, HC, TC> Codec for HListPrependCodec<HC, TC>
 ///
 /// This allows later parts of an `HList` codec to be dependent on on earlier values.
 pub fn hlist_flat_prepend_codec<H, T, HC, F>(head_codec: HC, tail_codec_fn: F) -> HListFlatPrependCodec<HC::IntoCodecT, F>
-    where T: HList, HC: IntoCodec<Value=H>, F: Fn(&H) -> IntoCodec<Value=T>
+    where T: HList, HC: IntoCodec<Value=H>, F: Fn(&H) -> Box<Codec<Value=T>>
 {
-    HListFlatPrependCodec { head_codec: head_codec.into_codec(), tail_codec_fn: Box::new(tail_codec_fn) }
+    HListFlatPrependCodec { head_codec: head_codec.into_codec(), tail_codec_fn: tail_codec_fn }
 }
-pub struct HListFlatPrependCodec<HC, F> { head_codec: HC, tail_codec_fn: Box<F> }
+pub struct HListFlatPrependCodec<HC, F> { head_codec: HC, tail_codec_fn: F }
 impl<H, T, HC, F> Codec for HListFlatPrependCodec<HC, F>
-    where T: HList, HC: Codec<Value=H>, F: Fn(&H) -> IntoCodec<Value=T>
+    where T: HList, HC: Codec<Value=H>, F: Fn(&H) -> Box<Codec<Value=T>>
 {
     type Value = HCons<H, T>;
     
@@ -426,7 +436,7 @@ impl<H, T, HC, F> Codec for HListFlatPrependCodec<HC, F>
         // TODO: Generalize this as an encode_both() function
         forcomp!({
             encoded_head <- self.head_codec.encode(&value.head());
-            encoded_tail <- (*self.tail_codec_fn)(&value.head()).encode(&value.tail());
+            encoded_tail <- (self.tail_codec_fn)(&value.head()).encode(&value.tail());
         } yield {
             byte_vector::append(&encoded_head, &encoded_tail)
         })
@@ -435,7 +445,7 @@ impl<H, T, HC, F> Codec for HListFlatPrependCodec<HC, F>
     fn decode(&self, bv: &ByteVector) -> DecodeResult<HCons<H, T>> {
         forcomp!({
             decoded_head <- self.head_codec.decode(&bv);
-            decoded_tail <- (*self.tail_codec_fn)(&decoded_head.value).decode(&decoded_head.remainder);
+            decoded_tail <- (self.tail_codec_fn)(&decoded_head.value).decode(&decoded_head.remainder);
         } yield {
             DecoderResult { value: HCons(decoded_head.value, decoded_tail.value), remainder: decoded_tail.remainder }
         })
@@ -929,7 +939,7 @@ mod tests {
     #[test]
     fn an_hlist_flat_prepend_codec_should_round_trip() {
         let codec = hlist_flat_prepend_codec(uint8(), |header| {
-            hcodec!({bytes((*header) as usize)} :: {uint16()})
+            Box::new(hcodec!({bytes((*header) as usize)} :: {uint16()}))
         });
         assert_round_trip(codec, &hlist!(0x02u8, byte_vector!(0xAB, 0xCD), 0xCAFEu16), &Some(byte_vector!(0x02, 0xAB, 0xCD, 0xCA, 0xFE)));
     }
@@ -940,83 +950,68 @@ mod tests {
         assert_round_trip(codec, &hlist!(7u8, 3u8, 1u8), &Some(byte_vector!(7, 3, 1)));
     }
 
+    // This is implemented as a macro as otherwise we'd have to write out an explicit return type
+    // and good luck with that...
+    macro_rules! make_test_hcodec {
+        {} => {
+            {
+                let m = byte_vector!(0xCA, 0xFE);
+                hcodec!(
+                    { "magic"      => constant(&m) } >>
+                    { "version"    => uint8()      } ::
+                    { "junk_len"   => uint8()      } >>= |junk_len| { Box::new(hcodec!(
+                        { "skip"   => ignore(1)                  } >>
+                        { "first"  => uint8()                    } ::
+                        { "junk"   => ignore(*junk_len as usize) } >>
+                        { "second" => uint8()                    } ::
+                        { "third"  => uint8()                    }
+                        ))}
+                )
+            }
+        };
+    }
+    
     #[test]
     fn the_hcodec_macro_should_work_with_a_mix_of_operations() {
-        let m = byte_vector!(0xCA, 0xFE);
-        let codec = hcodec!(
-            { "magic"      => constant(&m) } >>
-            { "version"    => uint8()      } ::
-            { "junk_len"   => uint8()      } >>= |junk_len| { hcodec!(
-                { "skip"   => ignore(1)                  } >>
-                { "first"  => uint8()                    } ::
-                { "junk"   => ignore(*junk_len as usize) } >>
-                { "second" => uint8()                    } ::
-                { "third"  => uint8()                    }
-            )}
-        );
-        
+        let codec = make_test_hcodec!();
         let input = hlist!(1u8, 3u8, 7u8, 3u8, 1u8);
         let expected = byte_vector!(0xCA, 0xFE, 0x01, 0x03, 0x00, 0x07, 0x00, 0x00, 0x00, 0x03, 0x01);
         assert_round_trip(codec, &input, &Some(expected));
     }
 
-    // #[bench]
-    // fn bench_enc_hlist(b: &mut Bencher) {
-    //     let m = byte_vector!(0xCA, 0xFE);
-    //     let codec = hcodec!(
-    //         { "magic"      => constant(&m) } >>
-    //         { "version"    => uint8        } ::
-    //         { "junk_len"   => uint8        } >>= |junk_len| { hcodec!(
-    //             { "skip"   => ignore(1)                  } >>
-    //             { "first"  => uint8                      } ::
-    //             { "junk"   => ignore(*junk_len as usize) } >>
-    //             { "second" => uint8                      } ::
-    //             { "third"  => uint8                      }
-    //         )}
-    //     );
-        
-    //     let input = hlist!(1u8, 3u8, 7u8, 3u8, 1u8);
-    //     b.iter(|| codec.encode(&input));
-    // }
+    #[bench]
+    fn bench_enc_hlist(b: &mut Bencher) {
+        let codec = make_test_hcodec!();
+        let input = hlist!(1u8, 3u8, 7u8, 3u8, 1u8);
+        b.iter(|| codec.encode(&input));
+    }
 
-    // #[bench]
-    // fn bench_dec_hlist(b: &mut Bencher) {
-    //     let m = byte_vector!(0xCA, 0xFE);
-    //     let codec = hcodec!(
-    //         { "magic"      => constant(&m) } >>
-    //         { "version"    => uint8        } ::
-    //         { "junk_len"   => uint8        } >>= |junk_len| { hcodec!(
-    //             { "skip"   => ignore(1)                  } >>
-    //             { "first"  => uint8                      } ::
-    //             { "junk"   => ignore(*junk_len as usize) } >>
-    //             { "second" => uint8                      } ::
-    //             { "third"  => uint8                      }
-    //         )}
-    //     );
-        
-    //     let input = byte_vector!(0xCA, 0xFE, 0x01, 0x03, 0x00, 0x07, 0x00, 0x00, 0x00, 0x03, 0x01);
-    //     b.iter(|| codec.decode(&input));
-    // }
+    #[bench]
+    fn bench_dec_hlist(b: &mut Bencher) {
+        let codec = make_test_hcodec!();
+        let input = byte_vector!(0xCA, 0xFE, 0x01, 0x03, 0x00, 0x07, 0x00, 0x00, 0x00, 0x03, 0x01);
+        b.iter(|| codec.decode(&input));
+    }
     
-    // //
-    // // Struct conversion codec
-    // //
+    //
+    // Struct conversion codec
+    //
     
-    // record_struct!(
-    //     TestStruct1,
-    //     foo: u8,
-    //     bar: u8);
+    record_struct!(
+        TestStruct1,
+        foo: u8,
+        bar: u8);
 
-    // #[test]
-    // fn record_structs_should_work() {
-    //     let s1 = TestStruct1::from_hlist(hlist!(7u8, 3u8));
-    //     assert_eq!(s1.foo, 7u8);
-    //     assert_eq!(s1.bar, 3u8);
-    // }
+    #[test]
+    fn record_structs_should_work() {
+        let s1 = TestStruct1::from_hlist(hlist!(7u8, 3u8));
+        assert_eq!(s1.foo, 7u8);
+        assert_eq!(s1.bar, 3u8);
+    }
 
-    // #[test]
-    // fn a_struct_codec_should_round_trip() {
-    //     let codec = struct_codec!(TestStruct1 from {uint8} :: {uint8});
-    //     assert_round_trip(codec, &TestStruct1 { foo: 7u8, bar: 3u8 }, &Some(byte_vector!(7, 3)));
-    // }
+    #[test]
+    fn a_struct_codec_should_round_trip() {
+        let codec = struct_codec!(TestStruct1 from {uint8()} :: {uint8()});
+        assert_round_trip(codec, &TestStruct1 { foo: 7u8, bar: 3u8 }, &Some(byte_vector!(7, 3)));
+    }
 }
