@@ -12,10 +12,7 @@ use std::cell::RefCell;
 use std::error;
 use std::fmt::{Debug, Formatter};
 use std::fs::File;
-use std::fs::PathExt;
-use std::io::Read;
-use std::io::Seek;
-use std::io::SeekFrom;
+use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 use std::rc::Rc;
 use std::vec::Vec;
@@ -216,12 +213,13 @@ impl Debug for ByteVector {
 
 // Wrapper around File that provides an implementation of Debug
 struct WrappedFile {
-    file: RefCell<File>
+    file: RefCell<File>,
+    path: String
 }
 
 impl Debug for WrappedFile {
     fn fmt(&self, formatter: &mut Formatter) -> Result<(), fmt::Error> {
-        self.file.borrow().path().unwrap().fmt(formatter)
+        formatter.write_str(&self.path)
     }
 }
 
@@ -408,7 +406,8 @@ pub fn file(path: &Path) -> Result<ByteVector, Error> {
         ByteVector {
             storage: Rc::new(StorageType::File {
                 file: WrappedFile {
-                    file: RefCell::new(file)
+                    file: RefCell::new(file),
+                    path: format!("{}", path.display())
                 },
                 length: metadata.len() as usize
             })

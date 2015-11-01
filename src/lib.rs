@@ -19,9 +19,8 @@
 #![feature(plugin, custom_attribute)]
 #![plugin(rcodec_macros)]
 
-// The following suppresses warnings related to unstable stuff used for file-backed ByteVectors.
-#![feature(file_path)]
-#![feature(path_ext)]
+// The following allows for use of the unstable `slice_bytes` functionality.
+#![feature(slice_bytes)]
 
 // The following is necessary to make exported macros visible.
 #[macro_use]

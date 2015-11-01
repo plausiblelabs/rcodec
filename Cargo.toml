@@ -1,5 +1,4 @@
 [package]
-
 name = "rcodec"
 version = "0.0.1"
 authors = ["Chris Campbell <campbell@plausible.coop>"]

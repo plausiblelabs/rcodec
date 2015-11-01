@@ -804,10 +804,10 @@ mod tests {
 
     #[test]
     fn an_i32_value_should_round_trip() {
-        assert_round_trip(uint32(), &0x12345678, &Some(byte_vector!(0x12, 0x34, 0x56, 0x78)));
-        assert_round_trip(uint32(), &-2, &Some(byte_vector!(0xff, 0xff, 0xff, 0xfe)));
-        assert_round_trip(uint32_l(), &0x12345678, &Some(byte_vector!(0x78, 0x56, 0x34, 0x12)));
-        assert_round_trip(uint32_l(), &-2, &Some(byte_vector!(0xfe, 0xff, 0xff, 0xff)));
+        assert_round_trip(int32(), &0x12345678, &Some(byte_vector!(0x12, 0x34, 0x56, 0x78)));
+        assert_round_trip(int32(), &-2, &Some(byte_vector!(0xff, 0xff, 0xff, 0xfe)));
+        assert_round_trip(int32_l(), &0x12345678, &Some(byte_vector!(0x78, 0x56, 0x34, 0x12)));
+        assert_round_trip(int32_l(), &-2, &Some(byte_vector!(0xfe, 0xff, 0xff, 0xff)));
     }
 
     #[test]

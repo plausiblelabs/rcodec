@@ -37,7 +37,7 @@ impl<H, T: HList> HCons<H, T> {
     }
 }
 
-impl<H, T> HList for HCons<H, T> {
+impl<H, T: HList> HList for HCons<H, T> {
 }
 
 /// Allows for conversion from an `HList` to an instance of the `Self` type.
