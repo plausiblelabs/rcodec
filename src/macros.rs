@@ -131,8 +131,8 @@ macro_rules! byte_vector {
 /// let c = byte_vector!(0xCA, 0xFE);
 /// let codec = hcodec!(
 ///     { "magic"  => constant(&c) } >>
-///     { "field1" => uint8()      } ::
-///     { "field2" => uint8()      }
+///     { "field1" => uint8        } ::
+///     { "field2" => uint8        }
 /// );
 ///
 /// let bytes = byte_vector!(0xCA, 0xFE, 0x01, 0x02);
@@ -199,9 +199,9 @@ macro_rules! hcodec_block {
 /// let header_codec = struct_codec!(
 ///     Header from
 ///     { "magic" => constant(&magic) } >>
-///     { "foo"   => uint8()          } ::
+///     { "foo"   => uint8            } ::
 ///     { "junk"  => ignore(2)        } >>
-///     { "bar"   => uint32()         }
+///     { "bar"   => uint32           }
 /// );
 ///
 /// let bytes = byte_vector!(0xCA, 0xFE, 0x07, 0xBE, 0xEF, 0x00, 0x00, 0x00, 0x06);

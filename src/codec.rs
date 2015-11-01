@@ -6,6 +6,9 @@
 // Scala scodec library: https://github.com/scodec/scodec/
 //
 
+// The following allows for non-uppercase constants (e.g. uint32_l vs UINT32_L).
+#![allow(non_upper_case_globals)]
+
 use std::fmt::Display;
 use std::marker::PhantomData;
 use std::mem::size_of;
@@ -129,60 +132,46 @@ integral_codec!(IntegralBECodec, value, &(*value).to_be(), value.to_be());
 integral_codec!(IntegralLECodec, value, &(*value).to_le(), value.to_le());
 
 /// Unsigned 8-bit integer codec.    
-#[inline(always)]
-pub fn uint8() -> IntegralCodec<u8> { IntegralCodec { _marker: PhantomData::<u8> } }
+pub const uint8: &'static Codec<Value=u8> = &IntegralCodec { _marker: PhantomData::<u8> };
 
 /// Signed 8-bit integer codec.
-#[inline(always)]
-pub fn int8() -> IntegralCodec<i8> { IntegralCodec { _marker: PhantomData::<i8> } }
+pub const int8: &'static Codec<Value=i8> = &IntegralCodec { _marker: PhantomData::<i8> };
 
 /// Big-endian unsigned 16-bit integer codec.
-#[inline(always)]
-pub fn uint16() -> IntegralBECodec<u16> { IntegralBECodec { _marker: PhantomData::<u16> } }
+pub const uint16: &'static Codec<Value=u16> = &IntegralBECodec { _marker: PhantomData::<u16> };
 
 /// Big-endian signed 16-bit integer codec.
-#[inline(always)]
-pub fn int16() -> IntegralBECodec<i16> { IntegralBECodec { _marker: PhantomData::<i16> } }
+pub const int16: &'static Codec<Value=i16> = &IntegralBECodec { _marker: PhantomData::<i16> };
 
 /// Big-endian unsigned 32-bit integer codec.
-#[inline(always)]
-pub fn uint32() -> IntegralBECodec<u32> { IntegralBECodec { _marker: PhantomData::<u32> } }
+pub const uint32: &'static Codec<Value=u32> = &IntegralBECodec { _marker: PhantomData::<u32> };
 
 /// Big-endian signed 32-bit integer codec.
-#[inline(always)]
-pub fn int32() -> IntegralBECodec<i32> { IntegralBECodec { _marker: PhantomData::<i32> } }
+pub const int32: &'static Codec<Value=i32> = &IntegralBECodec { _marker: PhantomData::<i32> };
 
 /// Big-endian unsigned 64-bit integer codec.
-#[inline(always)]
-pub fn uint64() -> IntegralBECodec<u64> { IntegralBECodec { _marker: PhantomData::<u64> } }
+pub const uint64: &'static Codec<Value=u64> = &IntegralBECodec { _marker: PhantomData::<u64> };
 
 /// Big-endian signed 64-bit integer codec.
-#[inline(always)]
-pub fn int64() -> IntegralBECodec<i64> { IntegralBECodec { _marker: PhantomData::<i64> } }
+pub const int64: &'static Codec<Value=i64> = &IntegralBECodec { _marker: PhantomData::<i64> };
 
 /// Little-endian unsigned 16-bit integer codec.
-#[inline(always)]
-pub fn uint16_l() -> IntegralLECodec<u16> { IntegralLECodec { _marker: PhantomData::<u16> } }
+pub const uint16_l: &'static Codec<Value=u16> = &IntegralLECodec { _marker: PhantomData::<u16> };
 
 /// Little-endian signed 16-bit integer codec.
-#[inline(always)]
-pub fn int16_l() -> IntegralLECodec<i16> { IntegralLECodec { _marker: PhantomData::<i16> } }
+pub const int16_l: &'static Codec<Value=i16> = &IntegralLECodec { _marker: PhantomData::<i16> };
 
 /// Little-endian unsigned 32-bit integer codec.
-#[inline(always)]
-pub fn uint32_l() -> IntegralLECodec<u32> { IntegralLECodec { _marker: PhantomData::<u32> } }
+pub const uint32_l: &'static Codec<Value=u32> = &IntegralLECodec { _marker: PhantomData::<u32> };
 
 /// Little-endian signed 32-bit integer codec.
-#[inline(always)]
-pub fn int32_l() -> IntegralLECodec<i32> { IntegralLECodec { _marker: PhantomData::<i32> } }
+pub const int32_l: &'static Codec<Value=i32> = &IntegralLECodec { _marker: PhantomData::<i32> };
 
 /// Little-endian unsigned 64-bit integer codec.
-#[inline(always)]
-pub fn uint64_l() -> IntegralLECodec<u64> { IntegralLECodec { _marker: PhantomData::<u64> } }
+pub const uint64_l: &'static Codec<Value=u64> = &IntegralLECodec { _marker: PhantomData::<u64> };
 
 /// Little-endian signed 64-bit integer codec.
-#[inline(always)]
-pub fn int64_l() -> IntegralLECodec<i64> { IntegralLECodec { _marker: PhantomData::<i64> } }
+pub const int64_l: &'static Codec<Value=i64> = &IntegralLECodec { _marker: PhantomData::<i64> };
 
 
 
@@ -729,6 +718,7 @@ mod tests {
     use super::*;
     use test::Bencher;
     use std::fmt::Debug;
+    use std::marker::PhantomData;
     use error::Error;
     use byte_vector;
     use byte_vector::ByteVector;
@@ -791,72 +781,70 @@ mod tests {
     
     #[test]
     fn a_u8_value_should_round_trip() {
-        assert_round_trip(uint8(), &7, &Some(byte_vector!(7)));
+        assert_round_trip(uint8, &7, &Some(byte_vector!(7)));
     }
 
     #[test]
     fn an_i8_value_should_round_trip() {
-        assert_round_trip(int8(), &7, &Some(byte_vector!(7)));
-        assert_round_trip(int8(), &-2, &Some(byte_vector!(0xfe)));
-        assert_round_trip(int8(), &-16, &Some(byte_vector!(0xf0)));
-        assert_round_trip(int8(), &-128, &Some(byte_vector!(0x80)));
+        assert_round_trip(int8, &7, &Some(byte_vector!(7)));
+        assert_round_trip(int8, &-2, &Some(byte_vector!(0xfe)));
+        assert_round_trip(int8, &-16, &Some(byte_vector!(0xf0)));
+        assert_round_trip(int8, &-128, &Some(byte_vector!(0x80)));
     }
     
     #[test]
     fn a_u16_value_should_round_trip() {
-        assert_round_trip(uint16(), &0x1234, &Some(byte_vector!(0x12, 0x34)));
-        assert_round_trip(uint16_l(), &0x1234, &Some(byte_vector!(0x34, 0x12)));
+        assert_round_trip(uint16, &0x1234, &Some(byte_vector!(0x12, 0x34)));
+        assert_round_trip(uint16_l, &0x1234, &Some(byte_vector!(0x34, 0x12)));
     }
 
     #[test]
     fn an_i16_value_should_round_trip() {
-        assert_round_trip(int16(), &0x1234, &Some(byte_vector!(0x12, 0x34)));
-        assert_round_trip(int16(), &-2, &Some(byte_vector!(0xff, 0xfe)));
-        assert_round_trip(int16_l(), &0x1234, &Some(byte_vector!(0x34, 0x12)));
-        assert_round_trip(int16_l(), &-2, &Some(byte_vector!(0xfe, 0xff)));
+        assert_round_trip(int16, &0x1234, &Some(byte_vector!(0x12, 0x34)));
+        assert_round_trip(int16, &-2, &Some(byte_vector!(0xff, 0xfe)));
+        assert_round_trip(int16_l, &0x1234, &Some(byte_vector!(0x34, 0x12)));
+        assert_round_trip(int16_l, &-2, &Some(byte_vector!(0xfe, 0xff)));
     }
 
     #[test]
     fn a_u32_value_should_round_trip() {
-        assert_round_trip(uint32(), &0x12345678, &Some(byte_vector!(0x12, 0x34, 0x56, 0x78)));
-        assert_round_trip(uint32_l(), &0x12345678, &Some(byte_vector!(0x78, 0x56, 0x34, 0x12)));
+        assert_round_trip(uint32, &0x12345678, &Some(byte_vector!(0x12, 0x34, 0x56, 0x78)));
+        assert_round_trip(uint32_l, &0x12345678, &Some(byte_vector!(0x78, 0x56, 0x34, 0x12)));
     }
 
     #[test]
     fn an_i32_value_should_round_trip() {
-        assert_round_trip(int32(), &0x12345678, &Some(byte_vector!(0x12, 0x34, 0x56, 0x78)));
-        assert_round_trip(int32(), &-2, &Some(byte_vector!(0xff, 0xff, 0xff, 0xfe)));
-        assert_round_trip(int32_l(), &0x12345678, &Some(byte_vector!(0x78, 0x56, 0x34, 0x12)));
-        assert_round_trip(int32_l(), &-2, &Some(byte_vector!(0xfe, 0xff, 0xff, 0xff)));
+        assert_round_trip(int32, &0x12345678, &Some(byte_vector!(0x12, 0x34, 0x56, 0x78)));
+        assert_round_trip(int32, &-2, &Some(byte_vector!(0xff, 0xff, 0xff, 0xfe)));
+        assert_round_trip(int32_l, &0x12345678, &Some(byte_vector!(0x78, 0x56, 0x34, 0x12)));
+        assert_round_trip(int32_l, &-2, &Some(byte_vector!(0xfe, 0xff, 0xff, 0xff)));
     }
 
     #[test]
     fn a_u64_value_should_round_trip() {
-        assert_round_trip(uint64(), &0x1234567890abcdef, &Some(byte_vector!(0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef)));
-        assert_round_trip(uint64_l(), &0x1234567890abcdef, &Some(byte_vector!(0xef, 0xcd, 0xab, 0x90, 0x78, 0x56, 0x34, 0x12)));
+        assert_round_trip(uint64, &0x1234567890abcdef, &Some(byte_vector!(0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef)));
+        assert_round_trip(uint64_l, &0x1234567890abcdef, &Some(byte_vector!(0xef, 0xcd, 0xab, 0x90, 0x78, 0x56, 0x34, 0x12)));
     }
 
     #[test]
     fn an_i64_value_should_round_trip() {
-        assert_round_trip(int64(), &0x1234567890abcdef, &Some(byte_vector!(0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef)));
-        assert_round_trip(int64(), &-2, &Some(byte_vector!(0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe)));
-        assert_round_trip(int64_l(), &0x1234567890abcdef, &Some(byte_vector!(0xef, 0xcd, 0xab, 0x90, 0x78, 0x56, 0x34, 0x12)));
-        assert_round_trip(int64_l(), &-2, &Some(byte_vector!(0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff)));
+        assert_round_trip(int64, &0x1234567890abcdef, &Some(byte_vector!(0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef)));
+        assert_round_trip(int64, &-2, &Some(byte_vector!(0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe)));
+        assert_round_trip(int64_l, &0x1234567890abcdef, &Some(byte_vector!(0xef, 0xcd, 0xab, 0x90, 0x78, 0x56, 0x34, 0x12)));
+        assert_round_trip(int64_l, &-2, &Some(byte_vector!(0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff)));
     }
 
     macro_rules! bench_int_codec {
         { $codec:ident, $enc:ident, $dec:ident } => {
             #[bench]
             fn $enc(b: &mut Bencher) {
-                let codec = $codec();
-                b.iter(|| codec.encode(&7));
+                b.iter(|| $codec.encode(&7));
             }
 
             #[bench]
             fn $dec(b: &mut Bencher) {
                 let bv = byte_vector!(0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07);
-                let codec = $codec();
-                b.iter(|| codec.decode(&bv));
+                b.iter(|| $codec.decode(&bv));
             }
         };
     }
@@ -978,13 +966,13 @@ mod tests {
 
     #[test]
     fn a_fixed_size_bytes_codec_should_round_trip() {
-        let codec = fixed_size_bytes(1, uint8());
+        let codec = fixed_size_bytes(1, uint8);
         assert_round_trip(codec, &7u8, &Some(byte_vector!(7)));
     }
 
     #[test]
     fn encoding_with_fixed_size_codec_should_pad_with_zeros_when_value_is_smaller_than_given_length() {
-        let codec = fixed_size_bytes(3, uint8());
+        let codec = fixed_size_bytes(3, uint8);
         assert_round_trip(codec, &7u8, &Some(byte_vector!(7, 0, 0)));
     }
 
@@ -997,7 +985,7 @@ mod tests {
     #[test]
     fn decoding_with_fixed_size_codec_should_return_remainder_that_had_len_bytes_dropped() {
         let input = byte_vector!(7, 1, 2, 3, 4);
-        let codec = fixed_size_bytes(3, uint8());
+        let codec = fixed_size_bytes(3, uint8);
         match codec.decode(&input) {
             Ok(result) => {
                 assert_eq!(result.value, 7u8);
@@ -1021,28 +1009,28 @@ mod tests {
     #[test]
     fn a_variable_size_bytes_codec_should_round_trip() {
         let input = byte_vector!(7, 1, 2, 3, 4);
-        let codec = variable_size_bytes(uint16(), identity_bytes());
+        let codec = variable_size_bytes(uint16, identity_bytes());
         assert_round_trip(codec, &input, &Some(byte_vector!(0, 5, 7, 1, 2, 3, 4)));
     }
 
     #[test]
     fn encoding_with_variable_size_codec_should_fail_when_length_of_encoded_value_is_too_large() {
         let input = byte_vector::fill(0x7, 256);
-        let codec = variable_size_bytes(uint8(), identity_bytes());
+        let codec = variable_size_bytes(uint8, identity_bytes());
         assert_eq!(codec.encode(&input).unwrap_err().message(), "Length of encoded value (256 bytes) is greater than maximum value (255) of length type");
     }
 
     #[bench]
     fn bench_enc_variable_size_bytes(b: &mut Bencher) {
         let input = byte_vector!(7, 1, 2, 3, 4);
-        let codec = variable_size_bytes(uint16(), identity_bytes());
+        let codec = variable_size_bytes(uint16, identity_bytes());
         b.iter(|| codec.encode(&input));
     }
 
     #[bench]
     fn bench_dec_variable_size_bytes(b: &mut Bencher) {
         let input = byte_vector!(0, 5, 7, 1, 2, 3, 4);
-        let codec = variable_size_bytes(uint16(), identity_bytes());
+        let codec = variable_size_bytes(uint16, identity_bytes());
         b.iter(|| codec.decode(&input));
     }
 
@@ -1053,7 +1041,7 @@ mod tests {
     #[test]
     fn an_eager_codec_should_round_trip() {
         let input = vec!(7, 1, 2, 3, 4);
-        let codec = eager(variable_size_bytes(uint16(), identity_bytes()));
+        let codec = eager(variable_size_bytes(uint16, identity_bytes()));
         assert_round_trip(codec, &input, &Some(byte_vector!(0, 5, 7, 1, 2, 3, 4)));
     }
 
@@ -1067,7 +1055,7 @@ mod tests {
         // TODO: This test is temporarily written using with_context() rather than the `|` operator
         // while we figure out a solution for the operator overloading issues
         let input = byte_vector::empty();
-        let codec = with_context("section", with_context("header", with_context("magic", uint8())));
+        let codec = with_context("section", with_context("header", with_context("magic", uint8)));
 
         // Verify that the error message is prefexed with the correct context
         assert_eq!(codec.decode(&input).unwrap_err().message(), "section/header/magic: Requested read offset of 0 and length 1 bytes exceeds vector length of 0");
@@ -1084,24 +1072,24 @@ mod tests {
 
     #[test]
     fn an_hlist_prepend_codec_should_round_trip() {
-        let codec1 = hlist_prepend_codec(uint8(), hnil_codec());
+        let codec1 = hlist_prepend_codec(uint8, hnil_codec());
         assert_round_trip(codec1, &hlist!(7u8), &Some(byte_vector!(7)));
 
-        let codec2 = hlist_prepend_codec(uint8(), hlist_prepend_codec(uint8(), hnil_codec()));
+        let codec2 = hlist_prepend_codec(uint8, hlist_prepend_codec(uint8, hnil_codec()));
         assert_round_trip(codec2, &hlist!(7u8, 3u8), &Some(byte_vector!(7, 3)));
     }
 
     #[test]
     fn an_hlist_flat_prepend_codec_should_round_trip() {
-        let codec = hlist_flat_prepend_codec(uint8(), |header| {
-            Box::new(hcodec!({bytes((*header) as usize)} :: {uint16()}))
+        let codec = hlist_flat_prepend_codec(uint8, |header| {
+            Box::new(hcodec!({bytes((*header) as usize)} :: {uint16}))
         });
         assert_round_trip(codec, &hlist!(0x02u8, byte_vector!(0xAB, 0xCD), 0xCAFEu16), &Some(byte_vector!(0x02, 0xAB, 0xCD, 0xCA, 0xFE)));
     }
 
     #[test]
     fn an_hlist_codec_should_round_trip() {
-        let codec = hcodec!({uint8()} :: {uint8()} :: {uint8()}); 
+        let codec = hcodec!({uint8} :: {uint8} :: {uint8}); 
         assert_round_trip(codec, &hlist!(7u8, 3u8, 1u8), &Some(byte_vector!(7, 3, 1)));
     }
 
@@ -1110,8 +1098,8 @@ mod tests {
         let c = byte_vector!(0xCA, 0xFE);
         let codec = hcodec!(
             { "magic"  => constant(&c) } >>
-            { "field1" => uint8()      } ::
-            { "field2" => uint8()      }
+            { "field1" => uint8        } ::
+            { "field2" => uint8        }
         );
         let bytes = byte_vector!(0xCA, 0xFE, 0x01, 0x02);
         let decoded = codec.decode(&bytes).unwrap().value;
@@ -1126,13 +1114,13 @@ mod tests {
                 let m = byte_vector!(0xCA, 0xFE);
                 hcodec!(
                     { "magic"      => constant(&m) } >>
-                    { "version"    => uint8()      } ::
-                    { "junk_len"   => uint8()      } >>= |junk_len| { Box::new(hcodec!(
+                    { "version"    => uint8      } ::
+                    { "junk_len"   => uint8      } >>= |junk_len| { Box::new(hcodec!(
                         { "skip"   => ignore(1)                  } >>
-                        { "first"  => uint8()                    } ::
+                        { "first"  => uint8                      } ::
                         { "junk"   => ignore(*junk_len as usize) } >>
-                        { "second" => uint8()                    } ::
-                        { "third"  => uint8()                    }
+                        { "second" => uint8                      } ::
+                        { "third"  => uint8                      }
                         ))}
                 )
             }
@@ -1179,7 +1167,24 @@ mod tests {
 
     #[test]
     fn a_struct_codec_should_round_trip() {
-        let codec = struct_codec!(TestStruct1 from {uint8()} :: {uint8()});
+        let codec = struct_codec!(TestStruct1 from {uint8} :: {uint8});
         assert_round_trip(codec, &TestStruct1 { foo: 7u8, bar: 3u8 }, &Some(byte_vector!(7, 3)));
+    }
+
+    //
+    // Boxed codec and static ref support
+    //
+
+    #[test]
+    fn boxed_codecs_should_work() {
+        let codec = Box::new(struct_codec!(TestStruct1 from {uint8} :: {uint8}));
+        assert_round_trip(codec, &TestStruct1 { foo: 7u8, bar: 3u8 }, &Some(byte_vector!(7, 3)));
+    }
+
+    static TEST_CODEC: &'static Codec<Value=i32> = &IntegralBECodec { _marker: PhantomData::<i32> };
+    
+    #[test]
+    fn static_codecs_should_work() {
+        assert_round_trip(TEST_CODEC, &0x12345678, &Some(byte_vector!(0x12, 0x34, 0x56, 0x78)));
     }
 }

@@ -46,13 +46,13 @@ macro_rules! make_complex_codec {
 
             let version_codec = struct_codec!(
                 TestRecordVersion from
-                { "compat_version"  => uint8()  } ::
-                { "feature_version" => uint8()  } );
+                { "compat_version"  => uint8  } ::
+                { "feature_version" => uint8  } );
 
             let section_codec = || { Box::new(struct_codec!(
                 TestSectionRecord from
-                { "section_offset"  => uint8()  } ::
-                { "section_length"  => uint8()  } ))
+                { "section_offset"  => uint8  } ::
+                { "section_length"  => uint8  } ))
             };
 
             let header_codec = struct_codec!(

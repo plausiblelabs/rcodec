@@ -48,7 +48,7 @@ fn assert_round_trip<T, C>(codec: C, value: &T, raw_bytes: &Option<ByteVector>)
 
 #[test]
 fn a_u8_value_should_round_trip() {
-    assert_round_trip(uint8(), &7u8, &Some(byte_vector!(7)));
+    assert_round_trip(uint8, &7u8, &Some(byte_vector!(7)));
 }
 
 record_struct!(
@@ -81,13 +81,13 @@ fn a_complex_codec_should_round_trip() {
 
     let version_codec = struct_codec!(
         TestRecordVersion from
-        { "compat_version"  => uint8()  } ::
-        { "feature_version" => uint8()  } );
+        { "compat_version"  => uint8  } ::
+        { "feature_version" => uint8  } );
 
     let section_codec = || { Box::new(struct_codec!(
         TestSectionRecord from
-        { "section_offset"  => uint8()  } ::
-        { "section_length"  => uint8()  } ))
+        { "section_offset"  => uint8  } ::
+        { "section_length"  => uint8  } ))
     };
 
     let header_codec = struct_codec!(
