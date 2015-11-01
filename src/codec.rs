@@ -19,16 +19,6 @@ use byte_vector;
 use byte_vector::ByteVector;
 use hlist::*;
 
-// TODO: This API style is similar to that used in the std::iter module, where codec creation functions
-// return a concrete struct, and functions accept an IntoCodec to allow for accepting different kinds of
-// Codec implementations as arguments.  This is counter to typical API design where would we try to hide
-// the implementation of each concrete type behind a trait (i.e., the functions would return a Codec<T>
-// instead of e.g. FixedSizeCodec).  The style used here and in std::iter gets the job done but most
-// folks agree that it would be better if Rust supported the notion of abstract return types.  There
-// have been a few proposals for post-1.0 that we should take advantage of once available:
-//   https://github.com/rust-lang/rfcs/pull/105
-//   https://github.com/aturon/rfcs/blob/62fe495d35f279a24eaef9b61dbe491145c2fb82/0000-abstract-return-types.md
-
 /// Implements encoding and decoding of values of type `Value`.
 pub trait Codec {
     /// The value type.
@@ -57,25 +47,33 @@ pub struct DecoderResult<V> {
 /// A result type returned by `decode` operations.
 pub type DecodeResult<V> = Result<DecoderResult<V>, Error>;
 
-/// Allows for conversion into a `Codec`.
-pub trait IntoCodec {
-    /// The codec value type.
-    type Value;
+// Automatically provides implementation of `Codec` trait for all `Box<Codec>`.
+impl<C: Codec + ?Sized> Codec for Box<C> {
+    type Value = C::Value;
 
-    /// Type definition for the `into_codec` function return value.
-    type IntoCodecT: Codec<Value=Self::Value>;
-
-    /// Consumes `Self` and turns it into a `Codec`.
-    fn into_codec(self) -> Self::IntoCodecT;
+    #[inline(always)]
+    fn encode(&self, value: &Self::Value) -> EncodeResult {
+        (**self).encode(value)
+    }
+    
+    #[inline(always)]
+    fn decode(&self, bv: &ByteVector) -> DecodeResult<Self::Value> {
+        (**self).decode(bv)
+    }
 }
 
-// Automatically provides implementation of `IntoCodec` trait for all `Codec` implementations.
-impl<C: Codec> IntoCodec for C {
+// Automatically provides implementation of `Codec` trait for all `&'static Codec`.
+impl<C: Codec + ?Sized> Codec for &'static C {
     type Value = C::Value;
-    type IntoCodecT = C;
 
-    fn into_codec(self) -> C {
-        self
+    #[inline(always)]
+    fn encode(&self, value: &Self::Value) -> EncodeResult {
+        (*self).encode(value)
+    }
+    
+    #[inline(always)]
+    fn decode(&self, bv: &ByteVector) -> DecodeResult<Self::Value> {
+        (*self).decode(bv)
     }
 }
 
@@ -313,10 +311,13 @@ pub fn bytes(len: usize) -> FixedSizeCodec<IdentityCodec> {
 /// When decoding, the given `codec` is only given `len` bytes.  If `codec` does
 /// not consume all `len` bytes, any remaining bytes are discarded.
 #[inline(always)]
-pub fn fixed_size_bytes<T, C>(len: usize, codec: C) -> FixedSizeCodec<C::IntoCodecT>
-    where C: IntoCodec<Value=T>
+pub fn fixed_size_bytes<T, C>(len: usize, codec: C) -> FixedSizeCodec<C>
+    where C: Codec<Value=T>
 {
-    FixedSizeCodec { len: len, codec: codec.into_codec() }
+    FixedSizeCodec {
+        len: len,
+        codec: codec
+    }
 }
 
 #[doc(hidden)]
@@ -363,10 +364,13 @@ impl<T, C> Codec for FixedSizeCodec<C>
 ///   - Encodes by encoding the length (in bytes) of the value followed by the value itself.
 ///   - Decodes by decoding the length and then attempting to decode the value that follows.
 #[inline(always)]
-pub fn variable_size_bytes<L, V, LC, VC>(len_codec: LC, val_codec: VC) -> VariableSizeCodec<LC::IntoCodecT, VC::IntoCodecT>
-    where L: PrimInt + Unsigned + FromPrimitive + Display, LC: IntoCodec<Value=L>, VC: IntoCodec<Value=V>
+pub fn variable_size_bytes<L, V, LC, VC>(len_codec: LC, val_codec: VC) -> VariableSizeCodec<LC, VC>
+    where L: PrimInt + Unsigned + FromPrimitive + Display, LC: Codec<Value=L>, VC: Codec<Value=V>
 {
-    VariableSizeCodec { len_codec: len_codec.into_codec(), val_codec: val_codec.into_codec() }
+    VariableSizeCodec {
+        len_codec: len_codec,
+        val_codec: val_codec
+    }
 }
 
 #[doc(hidden)]
@@ -418,10 +422,12 @@ impl<L, V, LC, VC> Codec for VariableSizeCodec<LC, VC>
 ///   - Encodes by first efficiently converting `Vec<u8>` values to a `ByteVector`.
 ///   - Decodes by performing a fully-realized read on the backing `ByteVector`.
 #[inline(always)]
-pub fn eager<C>(bv_codec: C) -> EagerCodec<C::IntoCodecT>
-    where C: IntoCodec<Value=ByteVector>
+pub fn eager<C>(bv_codec: C) -> EagerCodec<C>
+    where C: Codec<Value=ByteVector>
 {
-    EagerCodec { bv_codec: bv_codec.into_codec() }
+    EagerCodec {
+        bv_codec: bv_codec
+    }
 }
 #[doc(hidden)]
 pub struct EagerCodec<C> { bv_codec: C }
@@ -473,10 +479,13 @@ impl Codec for HNilCodec {
 
 /// Codec used to convert an `HList` of codecs into a single codec that encodes/decodes an `HList` of values.
 #[inline(always)]
-pub fn hlist_prepend_codec<H, T, HC, TC>(head_codec: HC, tail_codec: TC) -> HListPrependCodec<HC::IntoCodecT, TC::IntoCodecT>
-    where T: HList, HC: IntoCodec<Value=H>, TC: IntoCodec<Value=T>
+pub fn hlist_prepend_codec<H, T, HC, TC>(head_codec: HC, tail_codec: TC) -> HListPrependCodec<HC, TC>
+    where T: HList, HC: Codec<Value=H>, TC: Codec<Value=T>
 {
-    HListPrependCodec { head_codec: head_codec.into_codec(), tail_codec: tail_codec.into_codec() }
+    HListPrependCodec {
+        head_codec: head_codec,
+        tail_codec: tail_codec
+    }
 }
 
 #[doc(hidden)]
@@ -516,10 +525,13 @@ impl<H, T, HC, TC> Codec for HListPrependCodec<HC, TC>
 ///
 /// This allows later parts of an `HList` codec to be dependent on on earlier values.
 #[inline(always)]
-pub fn hlist_flat_prepend_codec<H, T, HC, F>(head_codec: HC, tail_codec_fn: F) -> HListFlatPrependCodec<HC::IntoCodecT, F>
-    where T: HList, HC: IntoCodec<Value=H>, F: Fn(&H) -> Box<Codec<Value=T>>
+pub fn hlist_flat_prepend_codec<H, T, HC, F>(head_codec: HC, tail_codec_fn: F) -> HListFlatPrependCodec<HC, F>
+    where T: HList, HC: Codec<Value=H>, F: Fn(&H) -> Box<Codec<Value=T>>
 {
-    HListFlatPrependCodec { head_codec: head_codec.into_codec(), tail_codec_fn: tail_codec_fn }
+    HListFlatPrependCodec {
+        head_codec: head_codec,
+        tail_codec_fn: tail_codec_fn
+    }
 }
 
 #[doc(hidden)]
@@ -561,10 +573,13 @@ impl<H, T, HC, F> Codec for HListFlatPrependCodec<HC, F>
 
 /// Codec for structs that support `HList` conversions.
 #[inline(always)]
-pub fn struct_codec<H, S, HC>(hlist_codec: HC) -> RecordStructCodec<S, HC::IntoCodecT>
-    where H: HList, S: FromHList<H> + ToHList<H>, HC: IntoCodec<Value=H>
+pub fn struct_codec<H, S, HC>(hlist_codec: HC) -> RecordStructCodec<S, HC>
+    where H: HList, S: FromHList<H> + ToHList<H>, HC: Codec<Value=H>
 {
-    RecordStructCodec { hlist_codec: hlist_codec.into_codec(), _marker: PhantomData::<S> }
+    RecordStructCodec {
+        hlist_codec: hlist_codec,
+        _marker: PhantomData::<S>
+    }
 }
 
 #[doc(hidden)]
@@ -633,10 +648,13 @@ impl<H, S, HC> Codec for RecordStructCodec<S, HC>
 // }
 /// Codec that injects additional context (e.g. in error messages) into the given codec.
 #[inline(always)]
-pub fn with_context<T, C>(context: &'static str, codec: C) -> ContextCodec<C::IntoCodecT>
-    where C: IntoCodec<Value=T>
+pub fn with_context<T, C>(context: &'static str, codec: C) -> ContextCodec<C>
+    where C: Codec<Value=T>
 {
-    ContextCodec { codec: codec.into_codec(), context: context }
+    ContextCodec {
+        codec: codec,
+        context: context
+    }
 }
 
 #[doc(hidden)]
@@ -668,10 +686,13 @@ impl<T, C> Codec for ContextCodec<C>
 /// Codec that encodes/decodes the unit value followed by the right-hand value, discarding
 /// the unit value when decoding.
 #[inline(always)]
-pub fn drop_left<T, LC, RC>(lhs: LC, rhs: RC) -> DropLeftCodec<LC::IntoCodecT, RC::IntoCodecT>
-    where LC: IntoCodec<Value=()>, RC: IntoCodec<Value=T>
+pub fn drop_left<T, LC, RC>(lhs: LC, rhs: RC) -> DropLeftCodec<LC, RC>
+    where LC: Codec<Value=()>, RC: Codec<Value=T>
 {
-    DropLeftCodec { lhs: lhs.into_codec(), rhs: rhs.into_codec() }
+    DropLeftCodec {
+        lhs: lhs,
+        rhs: rhs
+    }
 }
 
 #[doc(hidden)]
@@ -733,11 +754,10 @@ mod tests {
         assert_eq!(v3.unwrap(), 3u8);
     }
     
-    fn assert_round_trip<T, C>(c: C, value: &T, raw_bytes: &Option<ByteVector>)
-        where T: 'static + Eq + Debug, C: IntoCodec<Value=T>
+    fn assert_round_trip<T, C>(codec: C, value: &T, raw_bytes: &Option<ByteVector>)
+        where T: 'static + Eq + Debug, C: Codec<Value=T>
     {
         // Encode
-        let codec = c.into_codec();
         let result = codec.encode(value).and_then(|encoded| {
             // Compare encoded bytes to the expected bytes, if provided
             let compare_result = match *raw_bytes {

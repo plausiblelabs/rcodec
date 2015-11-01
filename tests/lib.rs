@@ -15,11 +15,10 @@ use rcodec::byte_vector::ByteVector;
 use rcodec::codec::*;
 use rcodec::hlist::*;
 
-fn assert_round_trip<T, C>(c: C, value: &T, raw_bytes: &Option<ByteVector>)
-    where T: 'static + Eq + Debug, C: IntoCodec<Value=T>
+fn assert_round_trip<T, C>(codec: C, value: &T, raw_bytes: &Option<ByteVector>)
+    where T: 'static + Eq + Debug, C: Codec<Value=T>
 {
     // Encode
-    let codec = c.into_codec();
     let result = codec.encode(value).and_then(|encoded| {
         // Compare encoded bytes to the expected bytes, if provided
         let compare_result = match *raw_bytes {
