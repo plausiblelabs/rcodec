@@ -6,9 +6,6 @@
 // Scala scodec library: https://github.com/scodec/scodec/
 //
 
-// The following suppresses warnings related to use of unstable std::slice::bytes::copy_memory() function.
-#![feature(core)]
-
 // The following allows for benchmark tests.
 #![feature(test)]
 
@@ -18,9 +15,6 @@
 // The following allows for using macros defined in the separate rcodec_macros crate.
 #![feature(plugin, custom_attribute)]
 #![plugin(rcodec_macros)]
-
-// The following allows for use of the unstable `slice_bytes` functionality.
-#![feature(slice_bytes)]
 
 // The following is necessary to make exported macros visible.
 #[macro_use]
@@ -39,4 +33,3 @@ extern crate num;
 
 // The following is used for benchmark tests.
 extern crate test;
-

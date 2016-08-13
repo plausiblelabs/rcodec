@@ -1181,7 +1181,7 @@ mod tests {
         assert_round_trip(codec, &TestStruct1 { foo: 7u8, bar: 3u8 }, &Some(byte_vector!(7, 3)));
     }
 
-    static TEST_CODEC: &'static Codec<Value=i32> = &IntegralBECodec { _marker: PhantomData::<i32> };
+    const TEST_CODEC: &'static Codec<Value=i32> = &IntegralBECodec { _marker: PhantomData::<i32> };
     
     #[test]
     fn static_codecs_should_work() {

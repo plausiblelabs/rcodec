@@ -277,12 +277,12 @@ impl StorageType {
             },
             StorageType::DirectValue { ref bytes, ref length } => {
                 let count = std::cmp::min(len, *length - offset);
-                std::slice::bytes::copy_memory(&bytes[offset .. offset + count], buf);
+                copy_memory(&bytes[offset .. offset + count], buf);
                 Ok(count)
             },
             StorageType::Heap { ref bytes } => {
                 let count = std::cmp::min(len, bytes.len() - offset);
-                std::slice::bytes::copy_memory(&bytes[offset .. offset + count], buf);
+                copy_memory(&bytes[offset .. offset + count], buf);
                 Ok(count)
             },
             StorageType::Append { ref lhs, ref rhs, .. } => {
@@ -383,7 +383,7 @@ pub fn from_vec(bytes: Vec<u8>) -> ByteVector {
 pub fn from_vec_copy(bytes: &Vec<u8>) -> ByteVector {
     let storage = if bytes.len() <= DIRECT_VALUE_SIZE_LIMIT {
         let mut array = [0u8; DIRECT_VALUE_SIZE_LIMIT];
-        std::slice::bytes::copy_memory(bytes, &mut array);
+        copy_memory(bytes, &mut array);
         StorageType::DirectValue { bytes: array, length: bytes.len() }
     } else {
         StorageType::Heap { bytes: bytes.clone() }
@@ -437,7 +437,13 @@ pub fn fill(value: u8, count: usize) -> ByteVector {
     let storage = StorageType::Heap { bytes: vec![value; count] };
     ByteVector { storage: Rc::new(storage) }
 }
-    
+
+/// A replacement for the deprecated std::slice::bytes::copy_memory
+fn copy_memory(from: &[u8], mut to: &mut [u8]) -> usize {
+    use std::io::Write;
+    to.write(from).unwrap()
+}
+ 
 #[cfg(test)]
 mod tests {
     use super::*;
