@@ -1,13 +1,7 @@
 [package]
-name = "rcodec"
+name = "hlist"
 version = "0.0.1"
 authors = ["Chris Campbell <campbell@plausible.coop>"]
 
-[dependencies]
-num = "*"
-
-[dependencies.hlist]
-path = "hlist"
-
 [dependencies.hlist_macros]
-path = "hlist/hlist_macros"
+path = "hlist_macros"

@@ -56,36 +56,6 @@ macro_rules! forcomp_stmts {
 }
 
 //
-// HList-related macros
-//
-
-/// Shorthand for building an `HList` from the given elements.
-///
-/// # Examples
-///
-/// ```
-/// #[macro_use]
-/// extern crate rcodec;
-/// use rcodec::hlist::*;
-/// 
-/// # fn main() {
-/// let x: HCons<u8, HCons<u32, HNil>> = hlist!(1u8, 666u32);
-/// # }
-/// ```
-#[macro_export]
-macro_rules! hlist {
-    {} => {
-        $crate::hlist::HNil
-    };
-    { $head:expr } => {
-        $crate::hlist::HCons($head, $crate::hlist::HNil)
-    };
-    { $head:expr, $($tail:expr),+ } => {
-        $crate::hlist::HCons($head, hlist!($($tail),+))
-    };
-}
-
-//
 // ByteVector-related macros
 //
 
@@ -125,7 +95,11 @@ macro_rules! byte_vector {
 /// ```
 /// #[macro_use]
 /// extern crate rcodec;
+/// #[macro_use]
+/// extern crate hlist;
+///
 /// use rcodec::codec::*;
+/// use hlist::*;
 /// 
 /// # fn main() {
 /// let c = byte_vector!(0xCA, 0xFE);
@@ -179,13 +153,16 @@ macro_rules! hcodec_block {
 ///
 /// ```
 /// #![feature(plugin, custom_attribute)]
-/// #![plugin(rcodec_macros)]
+/// #![plugin(hlist_macros)]
 ///
 /// #[macro_use]
 /// extern crate rcodec;
+/// #[macro_use]
+/// extern crate hlist;
+///
 /// use rcodec::byte_vector::*;
 /// use rcodec::codec::*;
-/// use rcodec::hlist::*;
+/// use hlist::*;
 ///
 /// #[derive(Debug, PartialEq, Eq)]
 /// #[HListSupport]
@@ -223,11 +200,14 @@ macro_rules! struct_codec {
 ///
 /// ```
 /// #![feature(plugin, custom_attribute)]
-/// #![plugin(rcodec_macros)]
+/// #![plugin(hlist_macros)]
 ///
 /// #[macro_use]
 /// extern crate rcodec;
-/// use rcodec::hlist::*;
+/// #[macro_use]
+/// extern crate hlist;
+/// use rcodec::*;
+/// use hlist::*;
 ///
 /// record_struct!(
 ///     TestStruct,

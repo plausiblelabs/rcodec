@@ -4,16 +4,19 @@
 //
 
 #![feature(plugin, custom_attribute)]
-#![plugin(rcodec_macros)]
+#![plugin(hlist_macros)]
 
 #[macro_use]
 extern crate rcodec;
+
+#[macro_use]
+extern crate hlist;
 
 use std::fmt::Debug;
 use rcodec::error::Error;
 use rcodec::byte_vector::ByteVector;
 use rcodec::codec::*;
-use rcodec::hlist::*;
+use hlist::*;
 
 fn assert_round_trip<T, C>(codec: C, value: &T, raw_bytes: &Option<ByteVector>)
     where T: 'static + Eq + Debug, C: Codec<Value=T>
