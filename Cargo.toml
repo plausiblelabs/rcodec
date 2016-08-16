@@ -5,9 +5,5 @@ authors = ["Chris Campbell <campbell@plausible.coop>"]
 
 [dependencies]
 num = "*"
-
-[dependencies.hlist]
-path = "hlist"
-
-[dependencies.hlist_macros]
-path = "hlist/hlist_macros"
+hlist = { git = "https://opensource.plausible.coop/src/scm/rc/hlist-rs.git" }
+hlist_macros = { git = "https://opensource.plausible.coop/src/scm/rc/hlist-rs.git" }
