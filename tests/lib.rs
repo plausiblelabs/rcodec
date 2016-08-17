@@ -54,6 +54,35 @@ fn a_u8_value_should_round_trip() {
     assert_round_trip(uint8, &7u8, &Some(byte_vector!(7)));
 }
 
+#[test]
+fn a_u32_value_should_round_trip() {
+    // This is an example from the README, so we spell it out longform instead of using `assert_round_trip`
+    let codec = uint32;
+    let v0 = 258u32;
+    let bv = codec.encode(&v0).unwrap();
+    assert_eq!(bv, byte_vector!(0x00, 0x00, 0x01, 0x02));
+    let v1 = codec.decode(&bv).unwrap().value;
+    assert_eq!(v0, v1);
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+#[HListSupport]
+struct TestStruct {
+    foo: u8,
+    bar: u16
+}
+
+#[test]
+fn a_simple_struct_should_round_trip() {
+    // This is an example from the README, so we spell it out longform instead of using `assert_round_trip`
+    let codec = struct_codec!(TestStruct from {uint8} :: {uint16});
+    let s0 = TestStruct { foo: 7u8, bar: 3u16 };
+    let bv = codec.encode(&s0).unwrap();
+    assert_eq!(bv, byte_vector!(7, 0, 3));
+    let s1 = codec.decode(&bv).unwrap().value;
+    assert_eq!(s0, s1);
+}
+
 record_struct!(
     TestRecordVersion,
     compat_version: u8,
