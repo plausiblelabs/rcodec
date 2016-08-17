@@ -507,8 +507,8 @@ impl<H, T, HC, TC> Codec for HListPrependCodec<HC, TC>
 ///
 /// This allows later parts of an `HList` codec to be dependent on on earlier values.
 #[inline(always)]
-pub fn hlist_flat_prepend_codec<H, T, HC, F>(head_codec: HC, tail_codec_fn: F) -> impl Codec<Value=HCons<H, T>>
-    where T: HList, HC: Codec<Value=H>, F: Fn(&H) -> Box<Codec<Value=T>>
+pub fn hlist_flat_prepend_codec<H, T, HC, TC, F>(head_codec: HC, tail_codec_fn: F) -> impl Codec<Value=HCons<H, T>>
+    where T: HList, HC: Codec<Value=H>, TC: Codec<Value=T>, F: Fn(&H) -> TC
 {
     HListFlatPrependCodec {
         head_codec: head_codec,
@@ -521,8 +521,8 @@ struct HListFlatPrependCodec<HC, F> {
     tail_codec_fn: F
 }
 
-impl<H, T, HC, F> Codec for HListFlatPrependCodec<HC, F>
-    where T: HList, HC: Codec<Value=H>, F: Fn(&H) -> Box<Codec<Value=T>>
+impl<H, T, HC, TC, F> Codec for HListFlatPrependCodec<HC, F>
+    where T: HList, HC: Codec<Value=H>, TC: Codec<Value=T>, F: Fn(&H) -> TC
 {
     type Value = HCons<H, T>;
     
@@ -1070,7 +1070,7 @@ mod tests {
     #[test]
     fn an_hlist_flat_prepend_codec_should_round_trip() {
         let codec = hlist_flat_prepend_codec(uint8, |header| {
-            Box::new(hcodec!({bytes((*header) as usize)} :: {uint16}))
+            hcodec!({bytes((*header) as usize)} :: {uint16})
         });
         assert_round_trip(codec, &hlist!(0x02u8, byte_vector!(0xAB, 0xCD), 0xCAFEu16), &Some(byte_vector!(0x02, 0xAB, 0xCD, 0xCA, 0xFE)));
     }
@@ -1103,13 +1103,13 @@ mod tests {
                 hcodec!(
                     { "magic"      => constant(&m) } >>
                     { "version"    => uint8      } ::
-                    { "junk_len"   => uint8      } >>= |junk_len| { Box::new(hcodec!(
+                    { "junk_len"   => uint8      } >>= |junk_len| { hcodec!(
                         { "skip"   => ignore(1)                  } >>
                         { "first"  => uint8                      } ::
                         { "junk"   => ignore(*junk_len as usize) } >>
                         { "second" => uint8                      } ::
                         { "third"  => uint8                      }
-                        ))}
+                        )}
                 )
             }
         };

@@ -97,9 +97,9 @@ let packet_codec = struct_codec!(
     { "magic"           => constant(&magic) } >>
     { "padding"         => ignore(4)        } >>
     { "header"          => header_codec     } >>= |hdr| {
-        Box::new(hcodec!(
+        hcodec!(
             { "flags"    => uint64                                       } ::
-            { "data"     => eager(bytes((hdr.data_len - 8u16) as usize)) }))
+            { "data"     => eager(bytes((hdr.data_len - 8u16) as usize)) })
     }
 );
 ```

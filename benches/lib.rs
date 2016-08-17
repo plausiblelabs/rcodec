@@ -4,16 +4,19 @@
 //
 
 #![feature(plugin, custom_attribute, test)]
-#![plugin(rcodec_macros)]
+#![plugin(hlist_macros)]
 
 #[macro_use]
 extern crate rcodec;
+
+#[macro_use]
+extern crate hlist;
 
 extern crate test;
 
 use test::Bencher;
 use rcodec::codec::*;
-use rcodec::hlist::*;
+use hlist::*;
 
 record_struct!(
     TestRecordVersion,
@@ -49,18 +52,18 @@ macro_rules! make_complex_codec {
                 { "compat_version"  => uint8  } ::
                 { "feature_version" => uint8  } );
 
-            let section_codec = || { Box::new(struct_codec!(
+            let section_codec = || { struct_codec!(
                 TestSectionRecord from
                 { "section_offset"  => uint8  } ::
-                { "section_length"  => uint8  } ))
+                { "section_length"  => uint8  } )
             };
 
             let header_codec = struct_codec!(
                 TestFileHeader from
                 { "magic"           => constant(&magic)      } >>
                 { "file_version"    => version_codec         } ::
-                { "meta_section"    => *section_codec()      } ::
-                { "data_section"    => *section_codec()      } );
+                { "meta_section"    => section_codec()       } ::
+                { "data_section"    => section_codec()       } );
 
             let item_codec = struct_codec!(
                 TestFileItem from
@@ -69,11 +72,11 @@ macro_rules! make_complex_codec {
                     let metadata_len  = hdr.meta_section.length as usize;
                     let padding_2_len = (hdr.data_section.offset as usize) - ((hdr.meta_section.offset as usize) + metadata_len);
                     let data_len      = hdr.data_section.length as usize;
-                    Box::new(hcodec!(
+                    hcodec!(
                         { "padding_1"   => ignore(padding_1_len)      } >>
                         { "metadata"    => eager(bytes(metadata_len)) } ::
                         { "padding_2"   => ignore(padding_2_len)      } >>
-                        { "data"        => eager(bytes(data_len))     } ))
+                        { "data"        => eager(bytes(data_len))     } )
                 });
 
             item_codec

@@ -118,9 +118,9 @@ fn a_slightly_more_complex_struct_should_round_trip() {
         { "magic"           => constant(&magic) } >>
         { "padding"         => ignore(4)        } >>
         { "header"          => header_codec     } >>= |hdr| {
-            Box::new(hcodec!(
+            hcodec!(
                 { "flags"    => uint64                                       } ::
-                { "data"     => eager(bytes((hdr.data_len - 8u16) as usize)) }))
+                { "data"     => eager(bytes((hdr.data_len - 8u16) as usize)) })
         }
     );
         
@@ -167,18 +167,18 @@ fn a_complex_codec_should_round_trip() {
         { "compat_version"  => uint8  } ::
         { "feature_version" => uint8  } );
 
-    let section_codec = || { Box::new(struct_codec!(
+    let section_codec = || { struct_codec!(
         TestSectionRecord from
         { "section_offset"  => uint8  } ::
-        { "section_length"  => uint8  } ))
+        { "section_length"  => uint8  } )
     };
 
     let header_codec = struct_codec!(
         TestFileHeader from
         { "magic"           => constant(&magic)      } >>
         { "file_version"    => version_codec         } ::
-        { "meta_section"    => *section_codec()      } ::
-        { "data_section"    => *section_codec()      } );
+        { "meta_section"    => section_codec()       } ::
+        { "data_section"    => section_codec()       } );
 
     let item_codec = struct_codec!(
         TestFileItem from
@@ -187,11 +187,11 @@ fn a_complex_codec_should_round_trip() {
             let metadata_len  = hdr.meta_section.length as usize;
             let padding_2_len = (hdr.data_section.offset as usize) - ((hdr.meta_section.offset as usize) + metadata_len);
             let data_len      = hdr.data_section.length as usize;
-            Box::new(hcodec!(
+            hcodec!(
                 { "padding_1"   => ignore(padding_1_len)      } >>
                 { "metadata"    => eager(bytes(metadata_len)) } ::
                 { "padding_2"   => ignore(padding_2_len)      } >>
-                { "data"        => eager(bytes(data_len))     } ))
+                { "data"        => eager(bytes(data_len))     } )
         });
     
     let header = TestFileHeader {
