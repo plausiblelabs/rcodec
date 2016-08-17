@@ -83,6 +83,57 @@ fn a_simple_struct_should_round_trip() {
     assert_eq!(s0, s1);
 }
 
+#[derive(Debug, PartialEq, Eq, Clone)]
+#[HListSupport]
+struct PacketHeader {
+    version: u8,
+    port: u16,
+    checksum: u16,
+    data_len: u16
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+#[HListSupport]
+struct Packet {
+    header: PacketHeader,
+    flags: u64,
+    data: Vec<u8>
+}
+
+#[test]
+fn a_slightly_more_complex_struct_should_round_trip() {
+    // This is an example from the README, so we spell it out longform instead of using `assert_round_trip`
+    let magic = byte_vector!(0xCA, 0xFE, 0xCA, 0xFE);
+    
+    let header_codec = struct_codec!(
+        PacketHeader from
+        { "version"      => uint8  } ::
+        { "port"         => uint16 } ::
+        { "checksum"     => uint16 } ::
+        { "data_len"     => uint16 }
+    );
+    
+    let packet_codec = struct_codec!(
+        Packet from
+        { "magic"           => constant(&magic) } >>
+        { "padding"         => ignore(4)        } >>
+        { "header"          => header_codec     } >>= |hdr| {
+            Box::new(hcodec!(
+                { "flags"    => uint64                                       } ::
+                { "data"     => eager(bytes((hdr.data_len - 8u16) as usize)) }))
+        }
+    );
+        
+    let p0 = Packet {
+        header: PacketHeader { version: 1, port: 80, checksum: 0, data_len: 13 },
+        flags: 666,
+        data: vec![1, 2, 3, 4, 5]
+    };
+    let bv = packet_codec.encode(&p0).unwrap();
+    let p1 = packet_codec.decode(&bv).unwrap().value;
+    assert_eq!(p0, p1);
+}
+
 record_struct!(
     TestRecordVersion,
     compat_version: u8,
