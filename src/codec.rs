@@ -89,8 +89,7 @@ impl<C: Codec + ?Sized> Codec for &'static C {
 macro_rules! integral_codec {
     { $structname:ident, $value:ident, $encswap:expr, $decswap:expr } => {
         /// Codec for primitive integral types.
-        #[doc(hidden)]
-        pub struct $structname<T> {
+        struct $structname<T> {
             _marker: PhantomData<T>
         }
 
@@ -181,12 +180,11 @@ pub const int64_l: &'static Codec<Value=i64> = &IntegralLECodec { _marker: Phant
 
 /// Codec that encodes `len` low bytes and decodes by discarding `len` bytes.
 #[inline(always)]
-pub fn ignore(len: usize) -> IgnoreCodec {
+pub fn ignore(len: usize) -> impl Codec<Value=()> {
     IgnoreCodec { len: len }
 }
 
-#[doc(hidden)]
-pub struct IgnoreCodec {
+struct IgnoreCodec {
     len: usize
 }
 
@@ -213,12 +211,11 @@ impl Codec for IgnoreCodec {
 /// Codec that always encodes the given byte vector, and decodes by returning a unit result if the actual bytes match
 /// the given byte vector or an error otherwise.
 #[inline(always)]
-pub fn constant(bytes: &ByteVector) -> ConstantCodec {
+pub fn constant(bytes: &ByteVector) -> impl Codec<Value=()> {
     ConstantCodec { bytes: (*bytes).clone() }
 }
 
-#[doc(hidden)]
-pub struct ConstantCodec {
+struct ConstantCodec {
     bytes: ByteVector
 }
 
@@ -251,12 +248,11 @@ impl Codec for ConstantCodec {
 ///   - Encodes by returning the given byte vector.
 ///   - Decodes by taking all remaining bytes from the given byte vector.
 #[inline(always)]
-pub fn identity_bytes() -> IdentityCodec {
+pub fn identity_bytes() -> impl Codec<Value=ByteVector> {
     IdentityCodec
 }
 
-#[doc(hidden)]
-pub struct IdentityCodec;
+struct IdentityCodec;
 
 impl Codec for IdentityCodec {
     type Value = ByteVector;
@@ -281,7 +277,7 @@ impl Codec for IdentityCodec {
 ///   - Encodes by returning the given byte vector if its length is `len` bytes, otherwise returns an error.
 ///   - Decodes by taking `len` bytes from the given byte vector.
 #[inline(always)]
-pub fn bytes(len: usize) -> FixedSizeCodec<IdentityCodec> {
+pub fn bytes(len: usize) -> impl Codec<Value=ByteVector> {
     fixed_size_bytes(len, identity_bytes())
 }
 
@@ -300,7 +296,7 @@ pub fn bytes(len: usize) -> FixedSizeCodec<IdentityCodec> {
 /// When decoding, the given `codec` is only given `len` bytes.  If `codec` does
 /// not consume all `len` bytes, any remaining bytes are discarded.
 #[inline(always)]
-pub fn fixed_size_bytes<T, C>(len: usize, codec: C) -> FixedSizeCodec<C>
+pub fn fixed_size_bytes<T, C>(len: usize, codec: C) -> impl Codec<Value=T>
     where C: Codec<Value=T>
 {
     FixedSizeCodec {
@@ -309,8 +305,7 @@ pub fn fixed_size_bytes<T, C>(len: usize, codec: C) -> FixedSizeCodec<C>
     }
 }
 
-#[doc(hidden)]
-pub struct FixedSizeCodec<C> {
+struct FixedSizeCodec<C> {
     len: usize,
     codec: C
 }
@@ -353,7 +348,7 @@ impl<T, C> Codec for FixedSizeCodec<C>
 ///   - Encodes by encoding the length (in bytes) of the value followed by the value itself.
 ///   - Decodes by decoding the length and then attempting to decode the value that follows.
 #[inline(always)]
-pub fn variable_size_bytes<L, V, LC, VC>(len_codec: LC, val_codec: VC) -> VariableSizeCodec<LC, VC>
+pub fn variable_size_bytes<L, V, LC, VC>(len_codec: LC, val_codec: VC) -> impl Codec<Value=V>
     where L: PrimInt + Unsigned + FromPrimitive + Display, LC: Codec<Value=L>, VC: Codec<Value=V>
 {
     VariableSizeCodec {
@@ -362,8 +357,7 @@ pub fn variable_size_bytes<L, V, LC, VC>(len_codec: LC, val_codec: VC) -> Variab
     }
 }
 
-#[doc(hidden)]
-pub struct VariableSizeCodec<LC, VC> {
+struct VariableSizeCodec<LC, VC> {
     len_codec: LC,
     val_codec: VC
 }
@@ -411,15 +405,16 @@ impl<L, V, LC, VC> Codec for VariableSizeCodec<LC, VC>
 ///   - Encodes by first efficiently converting `Vec<u8>` values to a `ByteVector`.
 ///   - Decodes by performing a fully-realized read on the backing `ByteVector`.
 #[inline(always)]
-pub fn eager<C>(bv_codec: C) -> EagerCodec<C>
+pub fn eager<C>(bv_codec: C) -> impl Codec<Value=Vec<u8>>
     where C: Codec<Value=ByteVector>
 {
     EagerCodec {
         bv_codec: bv_codec
     }
 }
-#[doc(hidden)]
-pub struct EagerCodec<C> { bv_codec: C }
+
+struct EagerCodec<C> { bv_codec: C }
+
 impl<C> Codec for EagerCodec<C>
     where C: Codec<Value=ByteVector>
 {
@@ -447,12 +442,11 @@ impl<C> Codec for EagerCodec<C>
 
 /// Codec for `HNil` type.
 #[inline(always)]
-pub fn hnil_codec() -> HNilCodec {
+pub fn hnil_codec() -> impl Codec<Value=HNil> {
     HNilCodec
 }
 
-#[doc(hidden)]
-pub struct HNilCodec;
+struct HNilCodec;
 
 impl Codec for HNilCodec {
     type Value = HNil;
@@ -468,7 +462,7 @@ impl Codec for HNilCodec {
 
 /// Codec used to convert an `HList` of codecs into a single codec that encodes/decodes an `HList` of values.
 #[inline(always)]
-pub fn hlist_prepend_codec<H, T, HC, TC>(head_codec: HC, tail_codec: TC) -> HListPrependCodec<HC, TC>
+pub fn hlist_prepend_codec<H, T, HC, TC>(head_codec: HC, tail_codec: TC) -> impl Codec<Value=HCons<H, T>>
     where T: HList, HC: Codec<Value=H>, TC: Codec<Value=T>
 {
     HListPrependCodec {
@@ -477,8 +471,7 @@ pub fn hlist_prepend_codec<H, T, HC, TC>(head_codec: HC, tail_codec: TC) -> HLis
     }
 }
 
-#[doc(hidden)]
-pub struct HListPrependCodec<HC, TC> {
+struct HListPrependCodec<HC, TC> {
     head_codec: HC,
     tail_codec: TC
 }
@@ -514,8 +507,8 @@ impl<H, T, HC, TC> Codec for HListPrependCodec<HC, TC>
 ///
 /// This allows later parts of an `HList` codec to be dependent on on earlier values.
 #[inline(always)]
-pub fn hlist_flat_prepend_codec<H, T, HC, F>(head_codec: HC, tail_codec_fn: F) -> HListFlatPrependCodec<HC, F>
-    where T: HList, HC: Codec<Value=H>, F: Fn(&H) -> Box<Codec<Value=T>>
+pub fn hlist_flat_prepend_codec<H, T, HC, TC, F>(head_codec: HC, tail_codec_fn: F) -> impl Codec<Value=HCons<H, T>>
+    where T: HList, HC: Codec<Value=H>, TC: Codec<Value=T>, F: Fn(&H) -> TC
 {
     HListFlatPrependCodec {
         head_codec: head_codec,
@@ -523,14 +516,13 @@ pub fn hlist_flat_prepend_codec<H, T, HC, F>(head_codec: HC, tail_codec_fn: F) -
     }
 }
 
-#[doc(hidden)]
-pub struct HListFlatPrependCodec<HC, F> {
+struct HListFlatPrependCodec<HC, F> {
     head_codec: HC,
     tail_codec_fn: F
 }
 
-impl<H, T, HC, F> Codec for HListFlatPrependCodec<HC, F>
-    where T: HList, HC: Codec<Value=H>, F: Fn(&H) -> Box<Codec<Value=T>>
+impl<H, T, HC, TC, F> Codec for HListFlatPrependCodec<HC, F>
+    where T: HList, HC: Codec<Value=H>, TC: Codec<Value=T>, F: Fn(&H) -> TC
 {
     type Value = HCons<H, T>;
     
@@ -562,7 +554,7 @@ impl<H, T, HC, F> Codec for HListFlatPrependCodec<HC, F>
 
 /// Codec for structs that support `HList` conversions.
 #[inline(always)]
-pub fn struct_codec<H, S, HC>(hlist_codec: HC) -> RecordStructCodec<S, HC>
+pub fn struct_codec<H, S, HC>(hlist_codec: HC) -> impl Codec<Value=S>
     where H: HList, S: FromHList<H> + ToHList<H>, HC: Codec<Value=H>
 {
     RecordStructCodec {
@@ -571,8 +563,7 @@ pub fn struct_codec<H, S, HC>(hlist_codec: HC) -> RecordStructCodec<S, HC>
     }
 }
 
-#[doc(hidden)]
-pub struct RecordStructCodec<S, HC> {
+struct RecordStructCodec<S, HC> {
     hlist_codec: HC,
     _marker: PhantomData<S>
 }
@@ -637,7 +628,7 @@ impl<H, S, HC> Codec for RecordStructCodec<S, HC>
 // }
 /// Codec that injects additional context (e.g. in error messages) into the given codec.
 #[inline(always)]
-pub fn with_context<T, C>(context: &'static str, codec: C) -> ContextCodec<C>
+pub fn with_context<T, C>(context: &'static str, codec: C) -> impl Codec<Value=T>
     where C: Codec<Value=T>
 {
     ContextCodec {
@@ -646,8 +637,7 @@ pub fn with_context<T, C>(context: &'static str, codec: C) -> ContextCodec<C>
     }
 }
 
-#[doc(hidden)]
-pub struct ContextCodec<C> {
+struct ContextCodec<C> {
     codec: C,
     context: &'static str
 }
@@ -675,7 +665,7 @@ impl<T, C> Codec for ContextCodec<C>
 /// Codec that encodes/decodes the unit value followed by the right-hand value, discarding
 /// the unit value when decoding.
 #[inline(always)]
-pub fn drop_left<T, LC, RC>(lhs: LC, rhs: RC) -> DropLeftCodec<LC, RC>
+pub fn drop_left<T, LC, RC>(lhs: LC, rhs: RC) -> impl Codec<Value=T>
     where LC: Codec<Value=()>, RC: Codec<Value=T>
 {
     DropLeftCodec {
@@ -684,8 +674,7 @@ pub fn drop_left<T, LC, RC>(lhs: LC, rhs: RC) -> DropLeftCodec<LC, RC>
     }
 }
 
-#[doc(hidden)]
-pub struct DropLeftCodec<LC, RC> {
+struct DropLeftCodec<LC, RC> {
     lhs: LC,
     rhs: RC
 }
@@ -718,7 +707,6 @@ mod tests {
     use super::*;
     use test::Bencher;
     use std::fmt::Debug;
-    use std::marker::PhantomData;
     use error::Error;
     use byte_vector;
     use byte_vector::ByteVector;
@@ -1082,7 +1070,7 @@ mod tests {
     #[test]
     fn an_hlist_flat_prepend_codec_should_round_trip() {
         let codec = hlist_flat_prepend_codec(uint8, |header| {
-            Box::new(hcodec!({bytes((*header) as usize)} :: {uint16}))
+            hcodec!({bytes((*header) as usize)} :: {uint16})
         });
         assert_round_trip(codec, &hlist!(0x02u8, byte_vector!(0xAB, 0xCD), 0xCAFEu16), &Some(byte_vector!(0x02, 0xAB, 0xCD, 0xCA, 0xFE)));
     }
@@ -1115,13 +1103,13 @@ mod tests {
                 hcodec!(
                     { "magic"      => constant(&m) } >>
                     { "version"    => uint8      } ::
-                    { "junk_len"   => uint8      } >>= |junk_len| { Box::new(hcodec!(
+                    { "junk_len"   => uint8      } >>= |junk_len| { hcodec!(
                         { "skip"   => ignore(1)                  } >>
                         { "first"  => uint8                      } ::
                         { "junk"   => ignore(*junk_len as usize) } >>
                         { "second" => uint8                      } ::
                         { "third"  => uint8                      }
-                        ))}
+                        )}
                 )
             }
         };
@@ -1181,7 +1169,7 @@ mod tests {
         assert_round_trip(codec, &TestStruct1 { foo: 7u8, bar: 3u8 }, &Some(byte_vector!(7, 3)));
     }
 
-    const TEST_CODEC: &'static Codec<Value=i32> = &IntegralBECodec { _marker: PhantomData::<i32> };
+    const TEST_CODEC: &'static Codec<Value=i32> = int32;
     
     #[test]
     fn static_codecs_should_work() {

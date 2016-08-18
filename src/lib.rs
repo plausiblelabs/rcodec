@@ -16,6 +16,9 @@
 // The following allows for macro debugging via trace_macros(true/false).
 #![feature(trace_macros)]
 
+// The following allows for the new `impl Trait` feature.
+#![feature(conservative_impl_trait)]
+
 // The following is necessary to make exported macros visible.
 #[macro_use]
 pub mod macros;
