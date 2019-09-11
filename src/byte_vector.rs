@@ -488,10 +488,7 @@ pub fn from_slice_copy(bytes: &[u8]) -> ByteVector {
 /// Returns a byte vector that consumes the given slice, used to store primitive values directly.
 pub fn from_slice(bytes: [u8; DIRECT_VALUE_SIZE_LIMIT], length: usize) -> ByteVector {
     ByteVector {
-        storage: Rc::new(StorageType::DirectValue {
-            bytes,
-            length,
-        }),
+        storage: Rc::new(StorageType::DirectValue { bytes, length }),
     }
 }
 
@@ -839,11 +836,13 @@ mod tests {
             ),
             Ok(file) => file,
         };
-        if let Err(why) = write_file.write_all(&contents) { panic!(
-            "Couldn't write test file {:?}: {}",
-            path.to_str(),
-            std::error::Error::description(&why)
-        )}
+        if let Err(why) = write_file.write_all(&contents) {
+            panic!(
+                "Couldn't write test file {:?}: {}",
+                path.to_str(),
+                std::error::Error::description(&why)
+            )
+        }
 
         let bv_result = file(path);
         assert!(bv_result.is_ok());

@@ -329,10 +329,7 @@ pub fn fixed_size_bytes<T, C>(len: usize, codec: C) -> impl Codec<Value = T>
 where
     C: Codec<Value = T>,
 {
-    FixedSizeCodec {
-        len,
-        codec,
-    }
+    FixedSizeCodec { len, codec }
 }
 
 struct FixedSizeCodec<C> {
@@ -695,10 +692,7 @@ pub fn with_context<T, C>(context: &'static str, codec: C) -> impl Codec<Value =
 where
     C: Codec<Value = T>,
 {
-    ContextCodec {
-        codec,
-        context,
-    }
+    ContextCodec { codec, context }
 }
 
 struct ContextCodec<C> {
@@ -1294,7 +1288,10 @@ mod tests {
         let codec = struct_codec!(TestStruct1 from {uint8} :: {uint8});
         assert_round_trip(
             codec,
-            &TestStruct1 { byte1: 7u8, byte2: 3u8 },
+            &TestStruct1 {
+                byte1: 7u8,
+                byte2: 3u8,
+            },
             &Some(byte_vector!(7, 3)),
         );
     }
@@ -1308,7 +1305,10 @@ mod tests {
         let codec = Box::new(struct_codec!(TestStruct1 from {uint8} :: {uint8}));
         assert_round_trip(
             codec,
-            &TestStruct1 { byte1: 7u8, byte2: 3u8 },
+            &TestStruct1 {
+                byte1: 7u8,
+                byte2: 3u8,
+            },
             &Some(byte_vector!(7, 3)),
         );
     }
