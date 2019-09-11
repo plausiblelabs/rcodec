@@ -810,8 +810,8 @@ mod tests {
                 }
                 None => Ok(()),
             };
-            if compare_result.is_err() {
-                return Err(compare_result.unwrap_err());
+            if let Err(error) = compare_result {
+                return Err(error)
             }
 
             // Decode and drop the remainder
