@@ -14,9 +14,9 @@
 #[macro_use]
 pub mod macros;
 
-pub mod error;
 pub mod byte_vector;
 pub mod codec;
+pub mod error;
 
 // TODO: Restore benchmark support
 // // The following is used for benchmark tests.

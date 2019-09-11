@@ -21,7 +21,7 @@ use crate::error::Error;
 #[derive(Clone)]
 pub struct ByteVector {
     /// The underlying storage type.
-    storage: Rc<StorageType>
+    storage: Rc<StorageType>,
 }
 
 impl ByteVector {
@@ -45,26 +45,27 @@ impl ByteVector {
         // TODO: Check that all bytes were read?
         self.read(&mut vec[..], 0, self.length()).map(|_res| vec)
     }
-    
+
     /// Returns a new byte vector containing exactly `len` bytes from this byte vector, or an
     /// error if insufficient data is available.
     pub fn take(&self, len: usize) -> Result<ByteVector, Error> {
-        ByteVector::view(&self.storage, 0, len).map(|storage| {
-            ByteVector { storage: storage }
-        })
+        ByteVector::view(&self.storage, 0, len).map(|storage| ByteVector { storage: storage })
     }
-    
+
     /// Returns a new byte vector containing all but the first `len` bytes of this byte vector,
     /// or an error if dropping `len` bytes would overrun the end of this byte vector.
     pub fn drop(&self, len: usize) -> Result<ByteVector, Error> {
         let storage_len = self.length();
         if len > storage_len {
-            return Err(Error::new(format!("Requested length of {len} bytes exceeds vector length of {vlen}", len = len, vlen = storage_len)));
+            return Err(Error::new(format!(
+                "Requested length of {len} bytes exceeds vector length of {vlen}",
+                len = len,
+                vlen = storage_len
+            )));
         }
-        
-        ByteVector::view(&self.storage, len, storage_len - len).map(|remainder| {
-            ByteVector { storage: remainder }
-        })
+
+        ByteVector::view(&self.storage, len, storage_len - len)
+            .map(|remainder| ByteVector { storage: remainder })
     }
 
     /// Returns a new vector of length `len` containing zero or more low bytes followed by this byte vector's contents.
@@ -72,7 +73,11 @@ impl ByteVector {
     pub fn pad_left(&self, len: usize) -> Result<ByteVector, Error> {
         let storage_len = self.length();
         if len < storage_len {
-            Err(Error::new(format!("Requested padded length of {len} bytes is smaller than vector length of {vlen}", len = len, vlen = storage_len)))
+            Err(Error::new(format!(
+                "Requested padded length of {len} bytes is smaller than vector length of {vlen}",
+                len = len,
+                vlen = storage_len
+            )))
         } else if len == storage_len {
             Ok((*self).clone())
         } else {
@@ -85,27 +90,39 @@ impl ByteVector {
     pub fn pad_right(&self, len: usize) -> Result<ByteVector, Error> {
         let storage_len = self.length();
         if len < storage_len {
-            Err(Error::new(format!("Requested padded length of {len} bytes is smaller than vector length of {vlen}", len = len, vlen = storage_len)))
+            Err(Error::new(format!(
+                "Requested padded length of {len} bytes is smaller than vector length of {vlen}",
+                len = len,
+                vlen = storage_len
+            )))
         } else if len == storage_len {
             Ok((*self).clone())
         } else {
             Ok(append(self, &fill(0, len - storage_len)))
         }
     }
-    
+
     /// Returns a projection at `offset` with `len` bytes within the given storage.
-    fn view(storage: &Rc<StorageType>, offset: usize, len: usize) -> Result<Rc<StorageType>, Error> {
+    fn view(
+        storage: &Rc<StorageType>,
+        offset: usize,
+        len: usize,
+    ) -> Result<Rc<StorageType>, Error> {
         // Verify that offset is within our storage bounds
         let storage_len = storage.length();
         if offset > storage_len {
-            return Err(Error::new(format!("Requested view offset of {off} bytes exceeds vector length of {vlen}", off = offset, vlen = storage_len)));
+            return Err(Error::new(format!(
+                "Requested view offset of {off} bytes exceeds vector length of {vlen}",
+                off = offset,
+                vlen = storage_len
+            )));
         }
-    
+
         // Verify that offset + len will not overflow
         if std::usize::MAX - offset < len {
             return Err(Error::new(format!("Requested view offset of {off} and length {len} bytes would overflow maximum value of usize", off = offset, len = len)));
         }
-    
+
         // Verify that offset + len is within our storage bounds
         if offset + len > storage_len {
             return Err(Error::new(format!("Requested view offset of {off} and length {len} bytes exceeds vector length of {vlen}", off = offset, len = len, vlen = storage_len)));
@@ -115,19 +132,33 @@ impl ByteVector {
         if len == storage_len {
             return Ok((*storage).clone());
         }
-    
+
         match **storage {
-            StorageType::Empty => {
-                Err(Error::new("Cannot create view for empty vector".to_string()))
-            },
+            StorageType::Empty => Err(Error::new(
+                "Cannot create view for empty vector".to_string(),
+            )),
+
             StorageType::DirectValue { .. } => {
-                Ok(Rc::new(StorageType::View { vstorage: (*storage).clone(), voffset: offset, vlen: len }))
-            },
+                // Create a new view around the value storage
+                Ok(Rc::new(StorageType::View {
+                    vstorage: (*storage).clone(),
+                    voffset: offset,
+                    vlen: len,
+                }))
+            }
+
             StorageType::Heap { .. } => {
                 // Create a new view around this heap storage
-                Ok(Rc::new(StorageType::View { vstorage: (*storage).clone(), voffset: offset, vlen: len }))
-            },
-            StorageType::Append { ref lhs, ref rhs, .. } => {
+                Ok(Rc::new(StorageType::View {
+                    vstorage: (*storage).clone(),
+                    voffset: offset,
+                    vlen: len,
+                }))
+            }
+
+            StorageType::Append {
+                ref lhs, ref rhs, ..
+            } => {
                 // If a single side encompasses the requested range, create a View around that side;
                 // otherwise the range spans both sides and we need to construct a new Append with
                 // two new Views
@@ -150,16 +181,27 @@ impl ByteVector {
                         Rc::new(StorageType::Append { lhs: lhs_view, rhs: rhs_view, len: lhs_view_len + rhs_view_len })
                     })
                 }
-            },
-            StorageType::View { ref vstorage, ref voffset, .. } => {
+            }
+
+            StorageType::View {
+                ref vstorage,
+                ref voffset,
+                ..
+            } => {
                 // Verify that voffset + offset will not overflow
                 if std::usize::MAX - offset < *voffset {
                     return Err(Error::new(format!("Requested view offset of {off} plus storage offset {voff} would overflow maximum value of usize", off = offset, voff = *voffset)));
                 }
                 ByteVector::view(vstorage, *voffset + offset, len)
-            },
+            }
+
             StorageType::File { .. } => {
-                Ok(Rc::new(StorageType::View { vstorage: (*storage).clone(), voffset: offset, vlen: len }))
+                // Create a new view around the file storage
+                Ok(Rc::new(StorageType::View {
+                    vstorage: (*storage).clone(),
+                    voffset: offset,
+                    vlen: len,
+                }))
             }
         }
     }
@@ -185,8 +227,7 @@ impl PartialEq for ByteVector {
     }
 }
 
-impl Eq for ByteVector {
-}
+impl Eq for ByteVector {}
 
 const CHARS: &'static [u8] = b"0123456789abcdef";
 
@@ -212,7 +253,7 @@ impl Debug for ByteVector {
 // Wrapper around File that provides an implementation of Debug
 struct WrappedFile {
     file: RefCell<File>,
-    path: String
+    path: String,
 }
 
 impl Debug for WrappedFile {
@@ -229,13 +270,29 @@ pub const DIRECT_VALUE_SIZE_LIMIT: usize = 8;
 #[derive(Debug)]
 enum StorageType {
     Empty,
-    DirectValue { bytes: [u8; DIRECT_VALUE_SIZE_LIMIT], length: usize },
-    Heap { bytes: Vec<u8> },
-    Append { lhs: Rc<StorageType>, rhs: Rc<StorageType>, len: usize },
+    DirectValue {
+        bytes: [u8; DIRECT_VALUE_SIZE_LIMIT],
+        length: usize,
+    },
+    Heap {
+        bytes: Vec<u8>,
+    },
+    Append {
+        lhs: Rc<StorageType>,
+        rhs: Rc<StorageType>,
+        len: usize,
+    },
     // TODO: Note the 'v' prefix; I couldn't find a way to rename the variables while destructuring
     // in a match, so this was the only way to avoid colliding with the offset/len function parameters
-    View { vstorage: Rc<StorageType>, voffset: usize, vlen: usize },
-    File { file: WrappedFile, length: usize }
+    View {
+        vstorage: Rc<StorageType>,
+        voffset: usize,
+        vlen: usize,
+    },
+    File {
+        file: WrappedFile,
+        length: usize,
+    },
 }
 
 impl StorageType {
@@ -247,7 +304,7 @@ impl StorageType {
             StorageType::Heap { ref bytes } => bytes.len(),
             StorageType::Append { ref len, .. } => *len,
             StorageType::View { ref vlen, .. } => *vlen,
-            StorageType::File { ref length, .. } => *length
+            StorageType::File { ref length, .. } => *length,
         }
     }
 
@@ -256,34 +313,44 @@ impl StorageType {
         // Verify that offset is within our storage bounds
         let storage_len = self.length();
         if offset > storage_len {
-            return Err(Error::new(format!("Requested read offset of {off} bytes exceeds vector length of {vlen}", off = offset, vlen = storage_len)));
+            return Err(Error::new(format!(
+                "Requested read offset of {off} bytes exceeds vector length of {vlen}",
+                off = offset,
+                vlen = storage_len
+            )));
         }
 
         // Verify that offset + len will not overflow
         if std::usize::MAX - offset < len {
             return Err(Error::new(format!("Requested read offset of {off} and length {len} bytes would overflow maximum value of usize", off = offset, len = len)));
         }
-        
+
         // Verify that offset + len is within our storage bounds
         if offset + len > storage_len {
             return Err(Error::new(format!("Requested read offset of {off} and length {len} bytes exceeds vector length of {vlen}", off = offset, len = len, vlen = storage_len)));
         }
-        
+
         match *self {
-            StorageType::Empty => {
-                Err(Error::new("Cannot read from empty vector".to_string()))
-            },
-            StorageType::DirectValue { ref bytes, ref length } => {
+            StorageType::Empty => Err(Error::new("Cannot read from empty vector".to_string())),
+
+            StorageType::DirectValue {
+                ref bytes,
+                ref length,
+            } => {
                 let count = std::cmp::min(len, *length - offset);
-                copy_memory(&bytes[offset .. offset + count], buf);
+                copy_memory(&bytes[offset..offset + count], buf);
                 Ok(count)
-            },
+            }
+
             StorageType::Heap { ref bytes } => {
                 let count = std::cmp::min(len, bytes.len() - offset);
-                copy_memory(&bytes[offset .. offset + count], buf);
+                copy_memory(&bytes[offset..offset + count], buf);
                 Ok(count)
-            },
-            StorageType::Append { ref lhs, ref rhs, .. } => {
+            }
+
+            StorageType::Append {
+                ref lhs, ref rhs, ..
+            } => {
                 // If the offset falls within lhs, perform the first half of the read
                 let lhs_result = if offset < lhs.length() {
                     let lcount = std::cmp::min(lhs.length() - offset, len);
@@ -303,42 +370,60 @@ impl StorageType {
                                 0
                             };
                             let rcount = len - lhs_read_size;
-                            let dst = &mut buf[lhs_read_size .. lhs_read_size + rcount];
-                            rhs.read(dst, roff, rcount) 
+                            let dst = &mut buf[lhs_read_size..lhs_read_size + rcount];
+                            rhs.read(dst, roff, rcount)
                         } else {
                             Ok(0)
                         };
 
-                        rhs_result.map(|rhs_read_size| {
-                            lhs_read_size + rhs_read_size
-                        })
-                    },
-                    Err(e) => Err(e)
+                        rhs_result.map(|rhs_read_size| lhs_read_size + rhs_read_size)
+                    }
+                    Err(e) => Err(e),
                 }
-            },
-            StorageType::View { ref vstorage, ref voffset, ref vlen } => {
+            }
+
+            StorageType::View {
+                ref vstorage,
+                ref voffset,
+                ref vlen,
+            } => {
                 // Verify that voffset + offset won't overflow
                 if std::usize::MAX - offset < *voffset {
                     return Err(Error::new(format!("Requested read offset of {off} plus storage offset {voff} would overflow maximum value of usize", off = offset, voff = *voffset)));
                 }
-                
+
                 // Let the backing storage perform the read
                 let count = std::cmp::min(*vlen, len);
                 vstorage.read(buf, *voffset + offset, count)
-            },
-            StorageType::File { ref file, ref length } => {
+            }
+
+            StorageType::File {
+                ref file,
+                ref length,
+            } => {
                 let count = std::cmp::min(*length, len);
                 let ref mut f = file.file.borrow_mut();
 
                 // Seek to `offset` and then read `count` bytes
-                let read_result = f.seek(SeekFrom::Start(offset as u64)).and_then(|_newpos| {
-                    f.read(&mut buf[0 .. count])
-                }).map_err(|io_err| Error::new(format!("Failed to read file: {}", std::error::Error::description(&io_err))));
+                let read_result = f
+                    .seek(SeekFrom::Start(offset as u64))
+                    .and_then(|_newpos| f.read(&mut buf[0..count]))
+                    .map_err(|io_err| {
+                        Error::new(format!(
+                            "Failed to read file: {}",
+                            std::error::Error::description(&io_err)
+                        ))
+                    });
 
-                // If the read was incomplete, keep reading recursively 
+                // If the read was incomplete, keep reading recursively
                 read_result.and_then(|bytes_read| {
                     if bytes_read < count {
-                        self.read(&mut buf[bytes_read .. len - bytes_read], offset + bytes_read, len - bytes_read).map(|size| size + bytes_read)
+                        self.read(
+                            &mut buf[bytes_read..len - bytes_read],
+                            offset + bytes_read,
+                            len - bytes_read,
+                        )
+                        .map(|size| size + bytes_read)
                     } else {
                         Ok(bytes_read)
                     }
@@ -349,7 +434,7 @@ impl StorageType {
 
     /// Unsafe access by index.
     fn unsafe_get(&self, index: usize) -> u8 {
-        let v: &mut[u8] = &mut[0];
+        let v: &mut [u8] = &mut [0];
 
         // Panic if the read failed
         let bytes_read = self.read(v, index, 1).unwrap();
@@ -368,13 +453,17 @@ impl StorageType {
 // TODO: Statics can't refer to heap-allocated data, so we can't have a single instance here
 //pub static EMPTY: ByteVector = ByteVector { storage: Rc::new(StorageType::Empty) };
 pub fn empty() -> ByteVector {
-    ByteVector { storage: Rc::new(StorageType::Empty) }
+    ByteVector {
+        storage: Rc::new(StorageType::Empty),
+    }
 }
 
 /// Returns a byte vector that consumes the contents of the given `Vec<u8>`.
 pub fn from_vec(bytes: Vec<u8>) -> ByteVector {
     let storage = StorageType::Heap { bytes: bytes };
-    ByteVector { storage: Rc::new(storage) }
+    ByteVector {
+        storage: Rc::new(storage),
+    }
 }
 
 /// Returns a byte vector that stores a copy of the given bytes on the heap.
@@ -382,16 +471,28 @@ pub fn from_vec_copy(bytes: &Vec<u8>) -> ByteVector {
     let storage = if bytes.len() <= DIRECT_VALUE_SIZE_LIMIT {
         let mut array = [0u8; DIRECT_VALUE_SIZE_LIMIT];
         copy_memory(bytes, &mut array);
-        StorageType::DirectValue { bytes: array, length: bytes.len() }
+        StorageType::DirectValue {
+            bytes: array,
+            length: bytes.len(),
+        }
     } else {
-        StorageType::Heap { bytes: bytes.clone() }
+        StorageType::Heap {
+            bytes: bytes.clone(),
+        }
     };
-    ByteVector { storage: Rc::new(storage) }
+    ByteVector {
+        storage: Rc::new(storage),
+    }
 }
 
 /// Returns a byte vector that consumes the given slice, used to store primitive values directly.
 pub fn from_slice(bytes: [u8; DIRECT_VALUE_SIZE_LIMIT], length: usize) -> ByteVector {
-    ByteVector { storage: Rc::new(StorageType::DirectValue { bytes: bytes, length: length }) }
+    ByteVector {
+        storage: Rc::new(StorageType::DirectValue {
+            bytes: bytes,
+            length: length,
+        }),
+    }
 }
 
 /// Returns a byte vector whose contents come from a file.
@@ -413,7 +514,12 @@ pub fn file(path: &Path) -> Result<ByteVector, Error> {
     });
 
     // Wrap I/O error in an rcodec error, if needed
-    result.map_err(|io_err| Error::new(format!("Failed to open file: {}", std::error::Error::description(&io_err))))
+    result.map_err(|io_err| {
+        Error::new(format!(
+            "Failed to open file: {}",
+            std::error::Error::description(&io_err)
+        ))
+    })
 }
 
 /// Returns a byte vector that contains the contents of `lhs` followed by the contents of `rhs`.
@@ -421,19 +527,33 @@ pub fn append(lhs: &ByteVector, rhs: &ByteVector) -> ByteVector {
     if lhs.length() == 0 && rhs.length() == 0 {
         empty()
     } else if lhs.length() == 0 {
-        ByteVector { storage: rhs.storage.clone() }
+        ByteVector {
+            storage: rhs.storage.clone(),
+        }
     } else if rhs.length() == 0 {
-        ByteVector { storage: lhs.storage.clone() }
+        ByteVector {
+            storage: lhs.storage.clone(),
+        }
     } else {
-        let storage = StorageType::Append { lhs: lhs.storage.clone(), rhs: rhs.storage.clone(), len: lhs.storage.length() + rhs.storage.length() };
-        ByteVector { storage: Rc::new(storage) }
+        let storage = StorageType::Append {
+            lhs: lhs.storage.clone(),
+            rhs: rhs.storage.clone(),
+            len: lhs.storage.length() + rhs.storage.length(),
+        };
+        ByteVector {
+            storage: Rc::new(storage),
+        }
     }
 }
 
 /// Returns a byte vector containing `value` repeated `count` times.
 pub fn fill(value: u8, count: usize) -> ByteVector {
-    let storage = StorageType::Heap { bytes: vec![value; count] };
-    ByteVector { storage: Rc::new(storage) }
+    let storage = StorageType::Heap {
+        bytes: vec![value; count],
+    };
+    ByteVector {
+        storage: Rc::new(storage),
+    }
 }
 
 /// A replacement for the deprecated std::slice::bytes::copy_memory
@@ -441,7 +561,7 @@ fn copy_memory(from: &[u8], mut to: &mut [u8]) -> usize {
     use std::io::Write;
     to.write(from).unwrap()
 }
- 
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -449,14 +569,14 @@ mod tests {
 
     #[test]
     fn byte_vector_macro_should_work() {
-        let bv1 = from_vec(vec!(1, 2, 3, 4));
+        let bv1 = from_vec(vec![1, 2, 3, 4]);
         let bv2 = byte_vector!(1, 2, 3, 4);
         assert_eq!(bv1, bv2);
     }
-    
+
     #[test]
     fn clone_should_work() {
-        let bytes = vec!(1, 2, 3, 4);
+        let bytes = vec![1, 2, 3, 4];
         let lhs = from_vec_copy(&bytes);
         let rhs = from_vec_copy(&bytes);
         let bv1 = append(&lhs, &rhs);
@@ -468,7 +588,7 @@ mod tests {
     fn debug_string_should_be_formatted_correctly() {
         assert_eq!("01020eff", format!("{:?}", byte_vector!(1, 2, 14, 255)))
     }
-    
+
     #[test]
     fn length_of_empty_vector_should_be_zero() {
         assert_eq!(empty().length(), 0);
@@ -481,7 +601,7 @@ mod tests {
 
     #[test]
     fn append_should_work() {
-        let bytes = vec!(1, 2, 3, 4);
+        let bytes = vec![1, 2, 3, 4];
         let lhs = from_vec_copy(&bytes);
         let rhs = from_vec_copy(&bytes);
 
@@ -491,22 +611,22 @@ mod tests {
         let expected = byte_vector!(1, 2, 3, 4, 1, 2, 3, 4);
         assert_eq!(bv, expected);
     }
-    
+
     #[test]
     fn big_appends_should_work() {
         let small = from_vec(vec![1; DIRECT_VALUE_SIZE_LIMIT]);
         let big = from_vec(vec![2; DIRECT_VALUE_SIZE_LIMIT + 1]);
-        
+
         let smallbig = append(&small, &big);
         let mut smallbig_expected = vec![1; DIRECT_VALUE_SIZE_LIMIT];
         smallbig_expected.extend(vec![2; DIRECT_VALUE_SIZE_LIMIT + 1]);
         assert_eq!(smallbig, from_vec(smallbig_expected));
-        
+
         let bigsmall = append(&big, &small);
         let mut bigsmall_expected = vec![2; DIRECT_VALUE_SIZE_LIMIT + 1];
         bigsmall_expected.extend(vec![1; DIRECT_VALUE_SIZE_LIMIT]);
         assert_eq!(bigsmall, from_vec(bigsmall_expected));
-        
+
         let bigbig = append(&big, &big);
         let bigbig_expected = vec![2; DIRECT_VALUE_SIZE_LIMIT * 2 + 2];
         assert_eq!(bigbig, from_vec(bigbig_expected));
@@ -518,12 +638,12 @@ mod tests {
         let expected = byte_vector!(6, 6, 6, 6);
         assert_eq!(bv, expected);
     }
-    
+
     #[test]
     fn read_should_fail_if_offset_is_out_of_bounds() {
         let bv = byte_vector!(1, 2, 3, 4);
 
-        let buf: &mut[u8] = &mut[0, 0];
+        let buf: &mut [u8] = &mut [0, 0];
         assert!(bv.read(buf, 0, 2).is_ok());
         assert!(bv.read(buf, 2, 2).is_ok());
         assert!(bv.read(buf, 4, 1).is_err());
@@ -535,7 +655,7 @@ mod tests {
     fn read_should_work_for_heap_vector() {
         let bv = byte_vector!(1, 2, 3, 4);
 
-        let buf: &mut[u8] = &mut[0, 0];
+        let buf: &mut [u8] = &mut [0, 0];
         let result = bv.read(buf, 1, 2);
         assert_eq!(result.unwrap(), 2);
         assert_eq!(buf, [2, 3]);
@@ -543,12 +663,12 @@ mod tests {
 
     #[test]
     fn read_should_work_for_append_vector() {
-        let bytes = vec!(1, 2, 3, 4);
+        let bytes = vec![1, 2, 3, 4];
         let lhs = from_vec_copy(&bytes);
         let rhs = from_vec_copy(&bytes);
         let bv = append(&lhs, &rhs);
 
-        let buf: &mut[u8] = &mut[0, 0];
+        let buf: &mut [u8] = &mut [0, 0];
 
         // Verify case where read takes from lhs only
         {
@@ -578,16 +698,16 @@ mod tests {
         let view0 = bv.drop(1).unwrap();
         let view1 = view0.drop(1).unwrap();
 
-        let buf: &mut[u8] = &mut[0, 0];
+        let buf: &mut [u8] = &mut [0, 0];
         assert_eq!(view1.read(buf, 0, 2).unwrap(), 2);
         assert_eq!(buf, [3, 4]);
 
         // TODO: Also test overflow case
     }
-    
+
     #[test]
     fn to_vec_should_work() {
-        let input = vec!(1, 2, 3, 4);
+        let input = vec![1, 2, 3, 4];
         let lhs = from_vec_copy(&input);
         let rhs = from_vec_copy(&input);
         let bv = append(&lhs, &rhs);
@@ -595,7 +715,7 @@ mod tests {
         let result = bv.to_vec();
         assert_eq!(result.unwrap(), vec!(1, 2, 3, 4, 1, 2, 3, 4));
     }
-    
+
     #[test]
     fn take_should_fail_if_length_is_invalid() {
         let bv = byte_vector!(1, 2, 3, 4);
@@ -615,7 +735,7 @@ mod tests {
 
     #[test]
     fn take_should_work_for_append_vector() {
-        let bytes = vec!(1, 2, 3, 4);
+        let bytes = vec![1, 2, 3, 4];
         let lhs = from_vec_copy(&bytes);
         let rhs = from_vec_copy(&bytes);
         let bv = append(&lhs, &rhs);
@@ -652,7 +772,7 @@ mod tests {
 
     #[test]
     fn drop_should_work_for_append_vector() {
-        let bytes = vec!(1, 2, 3, 4);
+        let bytes = vec![1, 2, 3, 4];
         let lhs = from_vec_copy(&bytes);
         let rhs = from_vec_copy(&bytes);
         let bv = append(&lhs, &rhs);
@@ -681,7 +801,10 @@ mod tests {
     #[test]
     fn pad_left_should_fail_if_length_is_invalid() {
         let bv = byte_vector!(1, 2, 3, 4);
-        assert_eq!(bv.pad_left(3).unwrap_err().message(), "Requested padded length of 3 bytes is smaller than vector length of 4");
+        assert_eq!(
+            bv.pad_left(3).unwrap_err().message(),
+            "Requested padded length of 3 bytes is smaller than vector length of 4"
+        );
     }
 
     #[test]
@@ -695,34 +818,45 @@ mod tests {
     #[test]
     fn pad_right_should_fail_if_length_is_invalid() {
         let bv = byte_vector!(1, 2, 3, 4);
-        assert_eq!(bv.pad_right(3).unwrap_err().message(), "Requested padded length of 3 bytes is smaller than vector length of 4");
+        assert_eq!(
+            bv.pad_right(3).unwrap_err().message(),
+            "Requested padded length of 3 bytes is smaller than vector length of 4"
+        );
     }
-    
+
     #[test]
     fn file_should_work() {
         use std::io::Write;
         use std::path::Path;
         let path = Path::new("/tmp/rcodec-test-file");
-        
+
         let contents = [1u8, 2, 3, 4, 5, 6, 7, 8, 9, 10];
         let mut write_file = match fs::File::create(path) {
-            Err(why) => panic!("Couldn't create test file {:?}: {}", path.to_str(), std::error::Error::description(&why)),
-            Ok(file) => file
+            Err(why) => panic!(
+                "Couldn't create test file {:?}: {}",
+                path.to_str(),
+                std::error::Error::description(&why)
+            ),
+            Ok(file) => file,
         };
         match write_file.write_all(&contents) {
-            Err(why) => panic!("Couldn't write test file {:?}: {}", path.to_str(), std::error::Error::description(&why)),
-            Ok(_) => ()
+            Err(why) => panic!(
+                "Couldn't write test file {:?}: {}",
+                path.to_str(),
+                std::error::Error::description(&why)
+            ),
+            Ok(_) => (),
         }
-        
+
         let bv_result = file(path);
         assert!(bv_result.is_ok());
         let bv = bv_result.unwrap();
         assert_eq!(bv, byte_vector!(1, 2, 3, 4, 5, 6, 7, 8, 9, 10));
-        
+
         let dropped = bv.drop(5);
         assert!(dropped.is_ok());
         assert_eq!(dropped.unwrap(), byte_vector!(6, 7, 8, 9, 10));
-        
+
         let _ignore = fs::remove_file(&path);
     }
 }

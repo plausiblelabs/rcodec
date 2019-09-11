@@ -14,13 +14,16 @@ pub struct Error {
     pub description: String,
 
     /// The stack of context strings, with outermost context identifier at the front of the vector.
-    context: Vec<String>
+    context: Vec<String>,
 }
 
 impl Error {
     /// Return a new Error with the given description.
     pub fn new(description: String) -> Error {
-        Error { description: description, context: Vec::new() }
+        Error {
+            description: description,
+            context: Vec::new(),
+        }
     }
 
     /// Return a human-readable error message that includes context, if any.
@@ -38,12 +41,15 @@ impl Error {
             format!("{}: {}", ctx, self.description)
         }
     }
-    
+
     /// Return a new Error with the given context identifier pushed into the context stack.
     pub fn push_context(&self, context: &str) -> Error {
         let mut new_context = self.context.clone();
         new_context.insert(0, context.to_string());
-        Error { description: self.description.clone(), context: new_context }
+        Error {
+            description: self.description.clone(),
+            context: new_context,
+        }
     }
 }
 
@@ -55,7 +61,9 @@ mod tests {
     fn the_error_message_should_include_context_in_the_correct_order() {
         let msg = "This is a slam poem that I wrote and I am speaking the slam poem to you right now with my mouth.";
         let expected = "outer/inner: ".to_string() + msg;
-        let error = Error::new(msg.to_string()).push_context("inner").push_context("outer");
+        let error = Error::new(msg.to_string())
+            .push_context("inner")
+            .push_context("outer");
         assert_eq!(error.message(), expected);
     }
 }

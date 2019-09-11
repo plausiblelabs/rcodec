@@ -32,7 +32,7 @@
 //     data: Vec<u8>);
 
 // const FILE_HEADER_SIZE: u8 = 6;
-    
+
 // macro_rules! make_complex_codec {
 //     {} => {
 //         {

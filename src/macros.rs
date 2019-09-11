@@ -16,7 +16,7 @@
 ///
 /// ```
 /// use rcodec::codec::*;
-/// 
+///
 /// # fn main() {
 /// let x = forcomp!({
 ///     foo <- Some(1u8);
@@ -25,7 +25,7 @@
 /// assert!(x.is_none());
 /// # }
 /// ```
-/// 
+///
 /// This is equivalent to:
 ///
 /// ```
@@ -63,7 +63,7 @@ macro_rules! forcomp_stmts {
 ///
 /// ```
 /// use rcodec::byte_vector;
-/// 
+///
 /// # fn main() {
 /// let bv = byte_vector!(1, 2, 3, 4);
 /// assert_eq!(bv, byte_vector::from_vec(vec!(1, 2, 3, 4)));
@@ -92,7 +92,7 @@ macro_rules! byte_vector {
 /// use hlist::*;
 /// use rcodec::{byte_vector, hcodec};
 /// use rcodec::codec::*;
-/// 
+///
 /// # fn main() {
 /// let c = byte_vector!(0xCA, 0xFE);
 /// let codec = hcodec!(
