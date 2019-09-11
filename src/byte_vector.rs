@@ -49,7 +49,7 @@ impl ByteVector {
     /// Returns a new byte vector containing exactly `len` bytes from this byte vector, or an
     /// error if insufficient data is available.
     pub fn take(&self, len: usize) -> Result<ByteVector, Error> {
-        ByteVector::view(&self.storage, 0, len).map(|storage| ByteVector { storage: storage })
+        ByteVector::view(&self.storage, 0, len).map(|storage| ByteVector { storage })
     }
 
     /// Returns a new byte vector containing all but the first `len` bytes of this byte vector,
@@ -229,7 +229,7 @@ impl PartialEq for ByteVector {
 
 impl Eq for ByteVector {}
 
-const CHARS: &'static [u8] = b"0123456789abcdef";
+const CHARS: &[u8] = b"0123456789abcdef";
 
 impl Debug for ByteVector {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
@@ -402,7 +402,7 @@ impl StorageType {
                 ref length,
             } => {
                 let count = std::cmp::min(*length, len);
-                let ref mut f = file.file.borrow_mut();
+                let f = &mut file.file.borrow_mut();
 
                 // Seek to `offset` and then read `count` bytes
                 let read_result = f
@@ -460,14 +460,14 @@ pub fn empty() -> ByteVector {
 
 /// Returns a byte vector that consumes the contents of the given `Vec<u8>`.
 pub fn from_vec(bytes: Vec<u8>) -> ByteVector {
-    let storage = StorageType::Heap { bytes: bytes };
+    let storage = StorageType::Heap { bytes };
     ByteVector {
         storage: Rc::new(storage),
     }
 }
 
 /// Returns a byte vector that stores a copy of the given bytes on the heap.
-pub fn from_vec_copy(bytes: &Vec<u8>) -> ByteVector {
+pub fn from_slice_copy(bytes: &[u8]) -> ByteVector {
     let storage = if bytes.len() <= DIRECT_VALUE_SIZE_LIMIT {
         let mut array = [0u8; DIRECT_VALUE_SIZE_LIMIT];
         copy_memory(bytes, &mut array);
@@ -477,7 +477,7 @@ pub fn from_vec_copy(bytes: &Vec<u8>) -> ByteVector {
         }
     } else {
         StorageType::Heap {
-            bytes: bytes.clone(),
+            bytes: bytes.to_owned(),
         }
     };
     ByteVector {
@@ -488,10 +488,7 @@ pub fn from_vec_copy(bytes: &Vec<u8>) -> ByteVector {
 /// Returns a byte vector that consumes the given slice, used to store primitive values directly.
 pub fn from_slice(bytes: [u8; DIRECT_VALUE_SIZE_LIMIT], length: usize) -> ByteVector {
     ByteVector {
-        storage: Rc::new(StorageType::DirectValue {
-            bytes: bytes,
-            length: length,
-        }),
+        storage: Rc::new(StorageType::DirectValue { bytes, length }),
     }
 }
 
@@ -577,8 +574,8 @@ mod tests {
     #[test]
     fn clone_should_work() {
         let bytes = vec![1, 2, 3, 4];
-        let lhs = from_vec_copy(&bytes);
-        let rhs = from_vec_copy(&bytes);
+        let lhs = from_slice_copy(&bytes);
+        let rhs = from_slice_copy(&bytes);
         let bv1 = append(&lhs, &rhs);
         let bv2 = bv1.clone();
         assert_eq!(bv1, bv2);
@@ -602,8 +599,8 @@ mod tests {
     #[test]
     fn append_should_work() {
         let bytes = vec![1, 2, 3, 4];
-        let lhs = from_vec_copy(&bytes);
-        let rhs = from_vec_copy(&bytes);
+        let lhs = from_slice_copy(&bytes);
+        let rhs = from_slice_copy(&bytes);
 
         let bv = append(&lhs, &rhs);
         assert_eq!(bv.length(), 8);
@@ -664,8 +661,8 @@ mod tests {
     #[test]
     fn read_should_work_for_append_vector() {
         let bytes = vec![1, 2, 3, 4];
-        let lhs = from_vec_copy(&bytes);
-        let rhs = from_vec_copy(&bytes);
+        let lhs = from_slice_copy(&bytes);
+        let rhs = from_slice_copy(&bytes);
         let bv = append(&lhs, &rhs);
 
         let buf: &mut [u8] = &mut [0, 0];
@@ -708,8 +705,8 @@ mod tests {
     #[test]
     fn to_vec_should_work() {
         let input = vec![1, 2, 3, 4];
-        let lhs = from_vec_copy(&input);
-        let rhs = from_vec_copy(&input);
+        let lhs = from_slice_copy(&input);
+        let rhs = from_slice_copy(&input);
         let bv = append(&lhs, &rhs);
 
         let result = bv.to_vec();
@@ -736,8 +733,8 @@ mod tests {
     #[test]
     fn take_should_work_for_append_vector() {
         let bytes = vec![1, 2, 3, 4];
-        let lhs = from_vec_copy(&bytes);
-        let rhs = from_vec_copy(&bytes);
+        let lhs = from_slice_copy(&bytes);
+        let rhs = from_slice_copy(&bytes);
         let bv = append(&lhs, &rhs);
 
         // Verify case where take takes part of lhs only
@@ -773,8 +770,8 @@ mod tests {
     #[test]
     fn drop_should_work_for_append_vector() {
         let bytes = vec![1, 2, 3, 4];
-        let lhs = from_vec_copy(&bytes);
-        let rhs = from_vec_copy(&bytes);
+        let lhs = from_slice_copy(&bytes);
+        let rhs = from_slice_copy(&bytes);
         let bv = append(&lhs, &rhs);
 
         // Verify case where drop takes part of lhs only
@@ -839,13 +836,12 @@ mod tests {
             ),
             Ok(file) => file,
         };
-        match write_file.write_all(&contents) {
-            Err(why) => panic!(
+        if let Err(why) = write_file.write_all(&contents) {
+            panic!(
                 "Couldn't write test file {:?}: {}",
                 path.to_str(),
                 std::error::Error::description(&why)
-            ),
-            Ok(_) => (),
+            )
         }
 
         let bv_result = file(path);

@@ -206,7 +206,7 @@ pub const int64_l: &'static dyn Codec<Value = i64> = &IntegralLECodec {
 /// Codec that encodes `len` low bytes and decodes by discarding `len` bytes.
 #[inline(always)]
 pub fn ignore(len: usize) -> impl Codec<Value = ()> {
-    IgnoreCodec { len: len }
+    IgnoreCodec { len }
 }
 
 struct IgnoreCodec {
@@ -223,7 +223,7 @@ impl Codec for IgnoreCodec {
     fn decode(&self, bv: &ByteVector) -> DecodeResult<()> {
         bv.drop(self.len).map(|remainder| DecoderResult {
             value: (),
-            remainder: remainder,
+            remainder,
         })
     }
 }
@@ -329,10 +329,7 @@ pub fn fixed_size_bytes<T, C>(len: usize, codec: C) -> impl Codec<Value = T>
 where
     C: Codec<Value = T>,
 {
-    FixedSizeCodec {
-        len: len,
-        codec: codec,
-    }
+    FixedSizeCodec { len, codec }
 }
 
 struct FixedSizeCodec<C> {
@@ -388,8 +385,8 @@ where
     VC: Codec<Value = V>,
 {
     VariableSizeCodec {
-        len_codec: len_codec,
-        val_codec: val_codec,
+        len_codec,
+        val_codec,
     }
 }
 
@@ -446,7 +443,7 @@ pub fn eager<C>(bv_codec: C) -> impl Codec<Value = Vec<u8>>
 where
     C: Codec<Value = ByteVector>,
 {
-    EagerCodec { bv_codec: bv_codec }
+    EagerCodec { bv_codec }
 }
 
 struct EagerCodec<C> {
@@ -460,7 +457,7 @@ where
     type Value = Vec<u8>;
 
     fn encode(&self, value: &Vec<u8>) -> EncodeResult {
-        self.bv_codec.encode(&byte_vector::from_vec_copy(value))
+        self.bv_codec.encode(&byte_vector::from_slice_copy(value))
     }
 
     fn decode(&self, bv: &ByteVector) -> DecodeResult<Vec<u8>> {
@@ -512,8 +509,8 @@ where
     TC: Codec<Value = T>,
 {
     HListPrependCodec {
-        head_codec: head_codec,
-        tail_codec: tail_codec,
+        head_codec,
+        tail_codec,
     }
 }
 
@@ -567,8 +564,8 @@ where
     F: Fn(&H) -> TC,
 {
     HListFlatPrependCodec {
-        head_codec: head_codec,
-        tail_codec_fn: tail_codec_fn,
+        head_codec,
+        tail_codec_fn,
     }
 }
 
@@ -619,7 +616,7 @@ where
     HC: Codec<Value = H>,
 {
     RecordStructCodec {
-        hlist_codec: hlist_codec,
+        hlist_codec,
         _marker: PhantomData::<S>,
     }
 }
@@ -695,10 +692,7 @@ pub fn with_context<T, C>(context: &'static str, codec: C) -> impl Codec<Value =
 where
     C: Codec<Value = T>,
 {
-    ContextCodec {
-        codec: codec,
-        context: context,
-    }
+    ContextCodec { codec, context }
 }
 
 struct ContextCodec<C> {
@@ -737,7 +731,7 @@ where
     LC: Codec<Value = ()>,
     RC: Codec<Value = T>,
 {
-    DropLeftCodec { lhs: lhs, rhs: rhs }
+    DropLeftCodec { lhs, rhs }
 }
 
 struct DropLeftCodec<LC, RC> {
@@ -778,20 +772,20 @@ mod tests {
     #[test]
     fn forcomp_macro_should_work() {
         let v1 = forcomp!({
-            foo <- Some(1u8);
-        } yield { foo });
+            part1 <- Some(1u8);
+        } yield { part1 });
         assert!(v1.is_some());
 
         let v2 = forcomp!({
-            foo <- Some(1u8);
-            bar <- None::<u8>;
-        } yield { foo + bar });
+            part1 <- Some(1u8);
+            part2 <- None::<u8>;
+        } yield { part1 + part2 });
         assert!(v2.is_none());
 
         let v3 = forcomp!({
-            foo <- Some(1u8);
-            bar <- Some(2u8);
-        } yield { foo + bar });
+            part1 <- Some(1u8);
+            part2 <- Some(2u8);
+        } yield { part1 + part2 });
         assert_eq!(v3.unwrap(), 3u8);
     }
 
@@ -816,8 +810,8 @@ mod tests {
                 }
                 None => Ok(()),
             };
-            if compare_result.is_err() {
-                return Err(compare_result.unwrap_err());
+            if let Err(error) = compare_result {
+                return Err(error);
             }
 
             // Decode and drop the remainder
@@ -866,12 +860,12 @@ mod tests {
     fn a_u32_value_should_round_trip() {
         assert_round_trip(
             uint32,
-            &0x12345678,
+            &0x1234_5678,
             &Some(byte_vector!(0x12, 0x34, 0x56, 0x78)),
         );
         assert_round_trip(
             uint32_l,
-            &0x12345678,
+            &0x1234_5678,
             &Some(byte_vector!(0x78, 0x56, 0x34, 0x12)),
         );
     }
@@ -880,13 +874,13 @@ mod tests {
     fn an_i32_value_should_round_trip() {
         assert_round_trip(
             int32,
-            &0x12345678,
+            &0x1234_5678,
             &Some(byte_vector!(0x12, 0x34, 0x56, 0x78)),
         );
         assert_round_trip(int32, &-2, &Some(byte_vector!(0xff, 0xff, 0xff, 0xfe)));
         assert_round_trip(
             int32_l,
-            &0x12345678,
+            &0x1234_5678,
             &Some(byte_vector!(0x78, 0x56, 0x34, 0x12)),
         );
         assert_round_trip(int32_l, &-2, &Some(byte_vector!(0xfe, 0xff, 0xff, 0xff)));
@@ -896,12 +890,12 @@ mod tests {
     fn a_u64_value_should_round_trip() {
         assert_round_trip(
             uint64,
-            &0x1234567890abcdef,
+            &0x1234_5678_90ab_cdef,
             &Some(byte_vector!(0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef)),
         );
         assert_round_trip(
             uint64_l,
-            &0x1234567890abcdef,
+            &0x1234_5678_90ab_cdef,
             &Some(byte_vector!(0xef, 0xcd, 0xab, 0x90, 0x78, 0x56, 0x34, 0x12)),
         );
     }
@@ -910,7 +904,7 @@ mod tests {
     fn an_i64_value_should_round_trip() {
         assert_round_trip(
             int64,
-            &0x1234567890abcdef,
+            &0x1234_5678_90ab_cdef,
             &Some(byte_vector!(0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef)),
         );
         assert_round_trip(
@@ -920,7 +914,7 @@ mod tests {
         );
         assert_round_trip(
             int64_l,
-            &0x1234567890abcdef,
+            &0x1234_5678_90ab_cdef,
             &Some(byte_vector!(0xef, 0xcd, 0xab, 0x90, 0x78, 0x56, 0x34, 0x12)),
         );
         assert_round_trip(
@@ -1280,13 +1274,13 @@ mod tests {
     // Struct conversion codec
     //
 
-    record_struct!(TestStruct1, foo: u8, bar: u8);
+    record_struct!(TestStruct1, byte1: u8, byte2: u8);
 
     #[test]
     fn record_structs_should_work() {
         let s1 = TestStruct1::from_hlist(hlist!(7u8, 3u8));
-        assert_eq!(s1.foo, 7u8);
-        assert_eq!(s1.bar, 3u8);
+        assert_eq!(s1.byte1, 7u8);
+        assert_eq!(s1.byte2, 3u8);
     }
 
     #[test]
@@ -1294,7 +1288,10 @@ mod tests {
         let codec = struct_codec!(TestStruct1 from {uint8} :: {uint8});
         assert_round_trip(
             codec,
-            &TestStruct1 { foo: 7u8, bar: 3u8 },
+            &TestStruct1 {
+                byte1: 7u8,
+                byte2: 3u8,
+            },
             &Some(byte_vector!(7, 3)),
         );
     }
@@ -1308,7 +1305,10 @@ mod tests {
         let codec = Box::new(struct_codec!(TestStruct1 from {uint8} :: {uint8}));
         assert_round_trip(
             codec,
-            &TestStruct1 { foo: 7u8, bar: 3u8 },
+            &TestStruct1 {
+                byte1: 7u8,
+                byte2: 3u8,
+            },
             &Some(byte_vector!(7, 3)),
         );
     }
@@ -1319,7 +1319,7 @@ mod tests {
     fn static_codecs_should_work() {
         assert_round_trip(
             TEST_CODEC,
-            &0x12345678,
+            &0x1234_5678,
             &Some(byte_vector!(0x12, 0x34, 0x56, 0x78)),
         );
     }

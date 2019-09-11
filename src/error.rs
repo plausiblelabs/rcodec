@@ -21,7 +21,7 @@ impl Error {
     /// Return a new Error with the given description.
     pub fn new(description: String) -> Error {
         Error {
-            description: description,
+            description,
             context: Vec::new(),
         }
     }

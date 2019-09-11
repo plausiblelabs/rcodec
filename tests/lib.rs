@@ -33,8 +33,8 @@ where
             }
             None => Ok(()),
         };
-        if compare_result.is_err() {
-            return Err(compare_result.unwrap_err());
+        if let Err(error) = compare_result {
+            return Err(error);
         }
 
         // Decode and drop the remainder
@@ -66,8 +66,8 @@ fn a_u32_value_should_round_trip() {
 
 #[derive(Debug, PartialEq, Eq, Clone, HListSupport)]
 struct TestStruct {
-    foo: u8,
-    bar: u16,
+    byte_field: u8,
+    short_field: u16,
 }
 
 #[test]
@@ -75,8 +75,8 @@ fn a_simple_struct_should_round_trip() {
     // This is an example from the README, so we spell it out longform instead of using `assert_round_trip`
     let codec = struct_codec!(TestStruct from {uint8} :: {uint16});
     let s0 = TestStruct {
-        foo: 7u8,
-        bar: 3u16,
+        byte_field: 7u8,
+        short_field: 3u16,
     };
     let bv = codec.encode(&s0).unwrap();
     assert_eq!(bv, byte_vector!(7, 0, 3));
@@ -211,7 +211,7 @@ fn a_complex_codec_should_round_trip() {
     };
 
     let item = TestFileItem {
-        header: header,
+        header,
         metadata: vec![1, 7],
         data: vec![6, 6],
     };
