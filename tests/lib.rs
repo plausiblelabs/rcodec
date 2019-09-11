@@ -34,7 +34,7 @@ where
             None => Ok(()),
         };
         if let Err(error) = compare_result {
-            return Err(error)
+            return Err(error);
         }
 
         // Decode and drop the remainder
