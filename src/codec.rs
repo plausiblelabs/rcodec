@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2015 Plausible Labs Cooperative, Inc.
+// Copyright (c) 2015-2019 Plausible Labs Cooperative, Inc.
 // All rights reserved.
 //
 // This API is based on the design of Michael Pilquist and Paul Chiusano's
@@ -17,10 +17,11 @@ use std::slice;
 
 use num::traits::{PrimInt, Unsigned, FromPrimitive};
 
-use error::Error;
-use byte_vector;
-use byte_vector::ByteVector;
 use hlist::*;
+
+use crate::byte_vector;
+use crate::byte_vector::ByteVector;
+use crate::error::Error;
 
 /// Implements encoding and decoding of values of type `Value`.
 pub trait Codec {
@@ -131,46 +132,46 @@ integral_codec!(IntegralBECodec, value, &(*value).to_be(), value.to_be());
 integral_codec!(IntegralLECodec, value, &(*value).to_le(), value.to_le());
 
 /// Unsigned 8-bit integer codec.    
-pub const uint8: &'static Codec<Value=u8> = &IntegralCodec { _marker: PhantomData::<u8> };
+pub const uint8: &'static dyn Codec<Value=u8> = &IntegralCodec { _marker: PhantomData::<u8> };
 
 /// Signed 8-bit integer codec.
-pub const int8: &'static Codec<Value=i8> = &IntegralCodec { _marker: PhantomData::<i8> };
+pub const int8: &'static dyn Codec<Value=i8> = &IntegralCodec { _marker: PhantomData::<i8> };
 
 /// Big-endian unsigned 16-bit integer codec.
-pub const uint16: &'static Codec<Value=u16> = &IntegralBECodec { _marker: PhantomData::<u16> };
+pub const uint16: &'static dyn Codec<Value=u16> = &IntegralBECodec { _marker: PhantomData::<u16> };
 
 /// Big-endian signed 16-bit integer codec.
-pub const int16: &'static Codec<Value=i16> = &IntegralBECodec { _marker: PhantomData::<i16> };
+pub const int16: &'static dyn Codec<Value=i16> = &IntegralBECodec { _marker: PhantomData::<i16> };
 
 /// Big-endian unsigned 32-bit integer codec.
-pub const uint32: &'static Codec<Value=u32> = &IntegralBECodec { _marker: PhantomData::<u32> };
+pub const uint32: &'static dyn Codec<Value=u32> = &IntegralBECodec { _marker: PhantomData::<u32> };
 
 /// Big-endian signed 32-bit integer codec.
-pub const int32: &'static Codec<Value=i32> = &IntegralBECodec { _marker: PhantomData::<i32> };
+pub const int32: &'static dyn Codec<Value=i32> = &IntegralBECodec { _marker: PhantomData::<i32> };
 
 /// Big-endian unsigned 64-bit integer codec.
-pub const uint64: &'static Codec<Value=u64> = &IntegralBECodec { _marker: PhantomData::<u64> };
+pub const uint64: &'static dyn Codec<Value=u64> = &IntegralBECodec { _marker: PhantomData::<u64> };
 
 /// Big-endian signed 64-bit integer codec.
-pub const int64: &'static Codec<Value=i64> = &IntegralBECodec { _marker: PhantomData::<i64> };
+pub const int64: &'static dyn Codec<Value=i64> = &IntegralBECodec { _marker: PhantomData::<i64> };
 
 /// Little-endian unsigned 16-bit integer codec.
-pub const uint16_l: &'static Codec<Value=u16> = &IntegralLECodec { _marker: PhantomData::<u16> };
+pub const uint16_l: &'static dyn Codec<Value=u16> = &IntegralLECodec { _marker: PhantomData::<u16> };
 
 /// Little-endian signed 16-bit integer codec.
-pub const int16_l: &'static Codec<Value=i16> = &IntegralLECodec { _marker: PhantomData::<i16> };
+pub const int16_l: &'static dyn Codec<Value=i16> = &IntegralLECodec { _marker: PhantomData::<i16> };
 
 /// Little-endian unsigned 32-bit integer codec.
-pub const uint32_l: &'static Codec<Value=u32> = &IntegralLECodec { _marker: PhantomData::<u32> };
+pub const uint32_l: &'static dyn Codec<Value=u32> = &IntegralLECodec { _marker: PhantomData::<u32> };
 
 /// Little-endian signed 32-bit integer codec.
-pub const int32_l: &'static Codec<Value=i32> = &IntegralLECodec { _marker: PhantomData::<i32> };
+pub const int32_l: &'static dyn Codec<Value=i32> = &IntegralLECodec { _marker: PhantomData::<i32> };
 
 /// Little-endian unsigned 64-bit integer codec.
-pub const uint64_l: &'static Codec<Value=u64> = &IntegralLECodec { _marker: PhantomData::<u64> };
+pub const uint64_l: &'static dyn Codec<Value=u64> = &IntegralLECodec { _marker: PhantomData::<u64> };
 
 /// Little-endian signed 64-bit integer codec.
-pub const int64_l: &'static Codec<Value=i64> = &IntegralLECodec { _marker: PhantomData::<i64> };
+pub const int64_l: &'static dyn Codec<Value=i64> = &IntegralLECodec { _marker: PhantomData::<i64> };
 
 
 
@@ -705,12 +706,9 @@ impl<T, LC, RC> Codec for DropLeftCodec<LC, RC>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use test::Bencher;
+    // TODO: Restore benchmark support
+    // use test::Bencher;
     use std::fmt::Debug;
-    use error::Error;
-    use byte_vector;
-    use byte_vector::ByteVector;
-    use hlist::*;
 
     #[test]
     fn forcomp_macro_should_work() {
@@ -822,38 +820,38 @@ mod tests {
         assert_round_trip(int64_l, &-2, &Some(byte_vector!(0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff)));
     }
 
-    macro_rules! bench_int_codec {
-        { $codec:ident, $enc:ident, $dec:ident } => {
-            #[bench]
-            fn $enc(b: &mut Bencher) {
-                b.iter(|| $codec.encode(&7));
-            }
+    // macro_rules! bench_int_codec {
+    //     { $codec:ident, $enc:ident, $dec:ident } => {
+    //         #[bench]
+    //         fn $enc(b: &mut Bencher) {
+    //             b.iter(|| $codec.encode(&7));
+    //         }
 
-            #[bench]
-            fn $dec(b: &mut Bencher) {
-                let bv = byte_vector!(0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07);
-                b.iter(|| $codec.decode(&bv));
-            }
-        };
-    }
+    //         #[bench]
+    //         fn $dec(b: &mut Bencher) {
+    //             let bv = byte_vector!(0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07);
+    //             b.iter(|| $codec.decode(&bv));
+    //         }
+    //     };
+    // }
 
-    bench_int_codec!(uint8,    bench_enc_uint8,    bench_dec_uint8);
-    bench_int_codec!(int8,     bench_enc_int8,     bench_dec_int8);
+    // bench_int_codec!(uint8,    bench_enc_uint8,    bench_dec_uint8);
+    // bench_int_codec!(int8,     bench_enc_int8,     bench_dec_int8);
 
-    bench_int_codec!(uint16,   bench_enc_uint16,   bench_dec_uint16);
-    bench_int_codec!(int16,    bench_enc_int16,    bench_dec_int16);
-    bench_int_codec!(uint16_l, bench_enc_uint16_l, bench_dec_uint16_l);
-    bench_int_codec!(int16_l,  bench_enc_int16_l,  bench_dec_int16_l);
+    // bench_int_codec!(uint16,   bench_enc_uint16,   bench_dec_uint16);
+    // bench_int_codec!(int16,    bench_enc_int16,    bench_dec_int16);
+    // bench_int_codec!(uint16_l, bench_enc_uint16_l, bench_dec_uint16_l);
+    // bench_int_codec!(int16_l,  bench_enc_int16_l,  bench_dec_int16_l);
 
-    bench_int_codec!(uint32,   bench_enc_uint32,   bench_dec_uint32);
-    bench_int_codec!(int32,    bench_enc_int32,    bench_dec_int32);
-    bench_int_codec!(uint32_l, bench_enc_uint32_l, bench_dec_uint32_l);
-    bench_int_codec!(int32_l,  bench_enc_int32_l,  bench_dec_int32_l);
+    // bench_int_codec!(uint32,   bench_enc_uint32,   bench_dec_uint32);
+    // bench_int_codec!(int32,    bench_enc_int32,    bench_dec_int32);
+    // bench_int_codec!(uint32_l, bench_enc_uint32_l, bench_dec_uint32_l);
+    // bench_int_codec!(int32_l,  bench_enc_int32_l,  bench_dec_int32_l);
 
-    bench_int_codec!(uint64,   bench_enc_uint64,   bench_dec_uint64);
-    bench_int_codec!(int64,    bench_enc_int64,    bench_dec_int64);
-    bench_int_codec!(uint64_l, bench_enc_uint64_l, bench_dec_uint64_l);
-    bench_int_codec!(int64_l,  bench_enc_int64_l,  bench_dec_int64_l);
+    // bench_int_codec!(uint64,   bench_enc_uint64,   bench_dec_uint64);
+    // bench_int_codec!(int64,    bench_enc_int64,    bench_dec_int64);
+    // bench_int_codec!(uint64_l, bench_enc_uint64_l, bench_dec_uint64_l);
+    // bench_int_codec!(int64_l,  bench_enc_int64_l,  bench_dec_int64_l);
 
     //
     // Ignore codec
@@ -1008,19 +1006,19 @@ mod tests {
         assert_eq!(codec.encode(&input).unwrap_err().message(), "Length of encoded value (256 bytes) is greater than maximum value (255) of length type");
     }
 
-    #[bench]
-    fn bench_enc_variable_size_bytes(b: &mut Bencher) {
-        let input = byte_vector!(7, 1, 2, 3, 4);
-        let codec = variable_size_bytes(uint16, identity_bytes());
-        b.iter(|| codec.encode(&input));
-    }
+    // #[bench]
+    // fn bench_enc_variable_size_bytes(b: &mut Bencher) {
+    //     let input = byte_vector!(7, 1, 2, 3, 4);
+    //     let codec = variable_size_bytes(uint16, identity_bytes());
+    //     b.iter(|| codec.encode(&input));
+    // }
 
-    #[bench]
-    fn bench_dec_variable_size_bytes(b: &mut Bencher) {
-        let input = byte_vector!(0, 5, 7, 1, 2, 3, 4);
-        let codec = variable_size_bytes(uint16, identity_bytes());
-        b.iter(|| codec.decode(&input));
-    }
+    // #[bench]
+    // fn bench_dec_variable_size_bytes(b: &mut Bencher) {
+    //     let input = byte_vector!(0, 5, 7, 1, 2, 3, 4);
+    //     let codec = variable_size_bytes(uint16, identity_bytes());
+    //     b.iter(|| codec.decode(&input));
+    // }
 
     //
     // Eager bytes codec
@@ -1123,19 +1121,19 @@ mod tests {
         assert_round_trip(codec, &input, &Some(expected));
     }
 
-    #[bench]
-    fn bench_enc_hlist(b: &mut Bencher) {
-        let codec = make_test_hcodec!();
-        let input = hlist!(1u8, 3u8, 7u8, 3u8, 1u8);
-        b.iter(|| codec.encode(&input));
-    }
+    // #[bench]
+    // fn bench_enc_hlist(b: &mut Bencher) {
+    //     let codec = make_test_hcodec!();
+    //     let input = hlist!(1u8, 3u8, 7u8, 3u8, 1u8);
+    //     b.iter(|| codec.encode(&input));
+    // }
 
-    #[bench]
-    fn bench_dec_hlist(b: &mut Bencher) {
-        let codec = make_test_hcodec!();
-        let input = byte_vector!(0xCA, 0xFE, 0x01, 0x03, 0x00, 0x07, 0x00, 0x00, 0x00, 0x03, 0x01);
-        b.iter(|| codec.decode(&input));
-    }
+    // #[bench]
+    // fn bench_dec_hlist(b: &mut Bencher) {
+    //     let codec = make_test_hcodec!();
+    //     let input = byte_vector!(0xCA, 0xFE, 0x01, 0x03, 0x00, 0x07, 0x00, 0x00, 0x00, 0x03, 0x01);
+    //     b.iter(|| codec.decode(&input));
+    // }
     
     //
     // Struct conversion codec
@@ -1169,7 +1167,7 @@ mod tests {
         assert_round_trip(codec, &TestStruct1 { foo: 7u8, bar: 3u8 }, &Some(byte_vector!(7, 3)));
     }
 
-    const TEST_CODEC: &'static Codec<Value=i32> = int32;
+    const TEST_CODEC: &'static dyn Codec<Value=i32> = int32;
     
     #[test]
     fn static_codecs_should_work() {

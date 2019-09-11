@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2015 Plausible Labs Cooperative, Inc.
+// Copyright (c) 2015-2019 Plausible Labs Cooperative, Inc.
 // All rights reserved.
 //
 // This API is based on the design of Michael Pilquist and Paul Chiusano's
@@ -7,9 +7,7 @@
 //
 
 use core::fmt;
-use std;
 use std::cell::RefCell;
-use std::error;
 use std::fmt::{Debug, Formatter};
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
@@ -17,7 +15,7 @@ use std::path::Path;
 use std::rc::Rc;
 use std::vec::Vec;
 
-use error::Error;
+use crate::error::Error;
 
 /// An immutable vector of bytes.
 #[derive(Clone)]
@@ -335,7 +333,7 @@ impl StorageType {
                 // Seek to `offset` and then read `count` bytes
                 let read_result = f.seek(SeekFrom::Start(offset as u64)).and_then(|_newpos| {
                     f.read(&mut buf[0 .. count])
-                }).map_err(|io_err| Error::new(format!("Failed to read file: {}", error::Error::description(&io_err))));
+                }).map_err(|io_err| Error::new(format!("Failed to read file: {}", std::error::Error::description(&io_err))));
 
                 // If the read was incomplete, keep reading recursively 
                 read_result.and_then(|bytes_read| {
@@ -415,7 +413,7 @@ pub fn file(path: &Path) -> Result<ByteVector, Error> {
     });
 
     // Wrap I/O error in an rcodec error, if needed
-    result.map_err(|io_err| Error::new(format!("Failed to open file: {}", error::Error::description(&io_err))))
+    result.map_err(|io_err| Error::new(format!("Failed to open file: {}", std::error::Error::description(&io_err))))
 }
 
 /// Returns a byte vector that contains the contents of `lhs` followed by the contents of `rhs`.
@@ -702,18 +700,17 @@ mod tests {
     
     #[test]
     fn file_should_work() {
-        use std::error::Error;
         use std::io::Write;
         use std::path::Path;
         let path = Path::new("/tmp/rcodec-test-file");
         
         let contents = [1u8, 2, 3, 4, 5, 6, 7, 8, 9, 10];
         let mut write_file = match fs::File::create(path) {
-            Err(why) => panic!("Couldn't create test file {:?}: {}", path.to_str(), Error::description(&why)),
+            Err(why) => panic!("Couldn't create test file {:?}: {}", path.to_str(), std::error::Error::description(&why)),
             Ok(file) => file
         };
         match write_file.write_all(&contents) {
-            Err(why) => panic!("Couldn't write test file {:?}: {}", path.to_str(), Error::description(&why)),
+            Err(why) => panic!("Couldn't write test file {:?}: {}", path.to_str(), std::error::Error::description(&why)),
             Ok(_) => ()
         }
         

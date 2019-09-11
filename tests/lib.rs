@@ -1,22 +1,16 @@
 //
-// Copyright (c) 2015 Plausible Labs Cooperative, Inc.
+// Copyright (c) 2015-2019 Plausible Labs Cooperative, Inc.
 // All rights reserved.
 //
 
-#![feature(plugin, custom_attribute)]
-#![plugin(hlist_macros)]
-
-#[macro_use]
-extern crate rcodec;
-
-#[macro_use]
-extern crate hlist;
-
 use std::fmt::Debug;
+
+use hlist::*;
+
+use rcodec::{byte_vector, hcodec, record_struct, struct_codec};
 use rcodec::error::Error;
 use rcodec::byte_vector::ByteVector;
 use rcodec::codec::*;
-use hlist::*;
 
 fn assert_round_trip<T, C>(codec: C, value: &T, raw_bytes: &Option<ByteVector>)
     where T: 'static + Eq + Debug, C: Codec<Value=T>
@@ -65,8 +59,7 @@ fn a_u32_value_should_round_trip() {
     assert_eq!(v0, v1);
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
-#[HListSupport]
+#[derive(Debug, PartialEq, Eq, Clone, HListSupport)]
 struct TestStruct {
     foo: u8,
     bar: u16
@@ -83,8 +76,7 @@ fn a_simple_struct_should_round_trip() {
     assert_eq!(s0, s1);
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
-#[HListSupport]
+#[derive(Debug, PartialEq, Eq, Clone, HListSupport)]
 struct PacketHeader {
     version: u8,
     port: u16,
@@ -92,8 +84,7 @@ struct PacketHeader {
     data_len: u16
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
-#[HListSupport]
+#[derive(Debug, PartialEq, Eq, Clone, HListSupport)]
 struct Packet {
     header: PacketHeader,
     flags: u64,

@@ -8,27 +8,16 @@ Add the following dependencies to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-rcodec = { git = "https://opensource.plausible.coop/src/scm/rc/rcodec.git" }
-hlist = { git = "https://opensource.plausible.coop/src/scm/rc/hlist-rs.git" }
-hlist_macros = { git = "https://opensource.plausible.coop/src/scm/rc/hlist-rs.git" }
+hlist = { git = "https://github.com/plausiblelabs/hlist-rs" }
+rcodec = { git = "https://github.com/plausiblelabs/rcodec" }
 ```
 
 Then, in your crate:
 
 ```rust
-// The following allows for using custom `HListSupport` attribute defined in hlist_macros crate.
-#![feature(plugin, custom_attribute)]
-#![plugin(hlist_macros)]
-
-#[macro_use]
-extern crate hlist;
-
-#[macro_use]
-extern crate rcodec;
-
-use rcodec::byte_vector::ByteVector;
-use rcodec::codec::*;
 use hlist::*;
+use rcodec::byte_vector;
+use rcodec::codec::*;
 ```
 
 ## Examples
@@ -44,11 +33,10 @@ let v1 = codec.decode(bv).unwrap().value;
 assert_eq(v0, v1);
 ```
 
-Automatic binding to structs when encoding/decoding is supported via the [hlist](https://opensource.plausible.coop/src/scm/rc/hlist-rs.git) crate:
+Automatic binding to structs when encoding/decoding is supported via the [hlist](https://github.com/plausiblelabs/hlist-rs) crate:
 
 ```rust
-#[derive(Debug, PartialEq, Eq, Clone)]
-#[HListSupport]
+#[derive(Debug, PartialEq, Eq, Clone, HListSupport)]
 struct TestStruct {
     foo: u8,
     bar: u16
@@ -65,8 +53,7 @@ assert_eq(s0, s1);
 Here's an example of a more complex codec for a fictitious binary packet format, which uses a number of the built-in combinators:
 
 ```rust
-#[derive(Debug, PartialEq, Eq, Clone)]
-#[HListSupport]
+#[derive(Debug, PartialEq, Eq, Clone, HListSupport)]
 struct PacketHeader {
     version: u8,
     port: u16,
@@ -74,8 +61,7 @@ struct PacketHeader {
     data_len: u16
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
-#[HListSupport]
+#[derive(Debug, PartialEq, Eq, Clone, HListSupport)]
 struct Packet {
     header: PacketHeader,
     flags: u64,
