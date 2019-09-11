@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2015 Plausible Labs Cooperative, Inc.
+// Copyright (c) 2015-2019 Plausible Labs Cooperative, Inc.
 // All rights reserved.
 //
 // HList macro implementations based on:
@@ -15,8 +15,6 @@
 /// # Examples
 ///
 /// ```
-/// #[macro_use]
-/// extern crate rcodec;
 /// use rcodec::codec::*;
 /// 
 /// # fn main() {
@@ -64,8 +62,6 @@ macro_rules! forcomp_stmts {
 /// # Examples
 ///
 /// ```
-/// #[macro_use]
-/// extern crate rcodec;
 /// use rcodec::byte_vector;
 /// 
 /// # fn main() {
@@ -93,13 +89,9 @@ macro_rules! byte_vector {
 /// # Examples
 ///
 /// ```
-/// #[macro_use]
-/// extern crate rcodec;
-/// #[macro_use]
-/// extern crate hlist;
-///
-/// use rcodec::codec::*;
 /// use hlist::*;
+/// use rcodec::{byte_vector, hcodec};
+/// use rcodec::codec::*;
 /// 
 /// # fn main() {
 /// let c = byte_vector!(0xCA, 0xFE);
@@ -120,16 +112,16 @@ macro_rules! hcodec {
         hnil_codec
     };
     { { $($head:tt)+ } } => {
-        hlist_prepend_codec(hcodec_block!($($head)+), hnil_codec())
+        hlist_prepend_codec($crate::hcodec_block!($($head)+), hnil_codec())
     };
     { { $($head:tt)+ } :: $($tail:tt)+ } => {
-        hlist_prepend_codec(hcodec_block!($($head)+), hcodec!($($tail)+))
+        hlist_prepend_codec($crate::hcodec_block!($($head)+), $crate::hcodec!($($tail)+))
     };
     { { $($head:tt)+ } >> $($tail:tt)+ } => {
-        drop_left(hcodec_block!($($head)+), hcodec!($($tail)+))
+        drop_left($crate::hcodec_block!($($head)+), $crate::hcodec!($($tail)+))
     };
     { { $($head:tt)+ } >>= |$v:ident| $fnbody:block } => {
-        hlist_flat_prepend_codec(hcodec_block!($($head)+), |$v| $fnbody)
+        hlist_flat_prepend_codec($crate::hcodec_block!($($head)+), |$v| $fnbody)
     };
 }
 
@@ -152,20 +144,11 @@ macro_rules! hcodec_block {
 /// # Examples
 ///
 /// ```
-/// #![feature(plugin, custom_attribute)]
-/// #![plugin(hlist_macros)]
-///
-/// #[macro_use]
-/// extern crate rcodec;
-/// #[macro_use]
-/// extern crate hlist;
-///
-/// use rcodec::byte_vector::*;
-/// use rcodec::codec::*;
 /// use hlist::*;
+/// use rcodec::{byte_vector, struct_codec};
+/// use rcodec::codec::*;
 ///
-/// #[derive(Debug, PartialEq, Eq)]
-/// #[HListSupport]
+/// #[derive(Debug, PartialEq, Eq, HListSupport)]
 /// pub struct Header {
 ///     foo: u8,
 ///     bar: u32
@@ -189,7 +172,7 @@ macro_rules! hcodec_block {
 #[macro_export]
 macro_rules! struct_codec {
     { $stype:ident from $($hcodec:tt)+ } => {
-        { struct_codec::<_, $stype, _>(hcodec!($($hcodec)+)) }
+        { struct_codec::<_, $stype, _>($crate::hcodec!($($hcodec)+)) }
     };
 }
 
@@ -199,15 +182,8 @@ macro_rules! struct_codec {
 /// # Examples
 ///
 /// ```
-/// #![feature(plugin, custom_attribute)]
-/// #![plugin(hlist_macros)]
-///
-/// #[macro_use]
-/// extern crate rcodec;
-/// #[macro_use]
-/// extern crate hlist;
-/// use rcodec::*;
 /// use hlist::*;
+/// use rcodec::*;
 ///
 /// record_struct!(
 ///     TestStruct,
@@ -224,8 +200,7 @@ macro_rules! struct_codec {
 #[macro_export]
 macro_rules! record_struct {
     { $stype:ident, $($fieldname:ident: $fieldtype:ty),+ } => {
-        #[derive(Debug, PartialEq, Eq, Clone)]
-        #[HListSupport]
+        #[derive(Debug, PartialEq, Eq, Clone, HListSupport)]
         pub struct $stype {
             $($fieldname: $fieldtype),+
         }

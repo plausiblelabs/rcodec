@@ -1,9 +1,10 @@
 [package]
 name = "rcodec"
-version = "0.0.1"
+version = "0.1.0"
+edition = "2018"
 authors = ["Chris Campbell <campbell@plausible.coop>"]
 
 [dependencies]
 num = "*"
-hlist = { git = "https://opensource.plausible.coop/src/scm/rc/hlist-rs.git" }
-hlist_macros = { git = "https://opensource.plausible.coop/src/scm/rc/hlist-rs.git" }
+# TODO: Update to use latest from crates.io
+hlist = { git = "https://github.com/plausiblelabs/hlist-rs" }

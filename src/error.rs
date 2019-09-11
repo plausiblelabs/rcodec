@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2015 Plausible Labs Cooperative, Inc.
+// Copyright (c) 2015-2019 Plausible Labs Cooperative, Inc.
 // All rights reserved.
 //
 // This API is based on the design of Michael Pilquist and Paul Chiusano's
