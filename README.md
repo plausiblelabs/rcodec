@@ -1,5 +1,7 @@
 # rcodec
 
+[![Build Status](https://travis-ci.com/plausiblelabs/rcodec.svg?branch=master)](https://travis-ci.com/plausiblelabs/rcodec)
+
 This Rust library provides combinators for purely functional, declarative encoding and decoding of binary data.  Its design is largely derived from that of the [scodec](https://github.com/scodec/scodec) library for Scala.
 
 ## Usage
