@@ -89,7 +89,7 @@ macro_rules! byte_vector {
 /// # Examples
 ///
 /// ```
-/// use hlist::*;
+/// use pl_hlist::*;
 /// use rcodec::{byte_vector, hcodec};
 /// use rcodec::codec::*;
 ///
@@ -144,7 +144,7 @@ macro_rules! hcodec_block {
 /// # Examples
 ///
 /// ```
-/// use hlist::*;
+/// use pl_hlist::*;
 /// use rcodec::{byte_vector, struct_codec};
 /// use rcodec::codec::*;
 ///
@@ -182,7 +182,7 @@ macro_rules! struct_codec {
 /// # Examples
 ///
 /// ```
-/// use hlist::*;
+/// use pl_hlist::*;
 /// use rcodec::*;
 ///
 /// record_struct!(

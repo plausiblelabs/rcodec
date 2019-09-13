@@ -7,7 +7,7 @@
 
 // use test::Bencher;
 // use rcodec::codec::*;
-// use hlist::*;
+// use pl_hlist::*;
 
 // record_struct!(
 //     TestRecordVersion,

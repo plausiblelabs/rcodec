@@ -5,7 +5,7 @@
 
 use std::fmt::Debug;
 
-use hlist::*;
+use pl_hlist::*;
 
 use rcodec::byte_vector::ByteVector;
 use rcodec::codec::*;

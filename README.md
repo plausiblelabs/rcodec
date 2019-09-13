@@ -10,14 +10,14 @@ Add the following dependencies to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-hlist = { git = "https://github.com/plausiblelabs/hlist-rs" }
-rcodec = { git = "https://github.com/plausiblelabs/rcodec" }
+pl-hlist = "1.0.0"
+rcodec = "1.0.0"
 ```
 
 Then, in your crate:
 
 ```rust
-use hlist::*;
+use pl_hlist::*;
 use rcodec::byte_vector;
 use rcodec::codec::*;
 ```
@@ -35,7 +35,7 @@ let v1 = codec.decode(bv).unwrap().value;
 assert_eq(v0, v1);
 ```
 
-Automatic binding to structs when encoding/decoding is supported via the [hlist](https://github.com/plausiblelabs/hlist-rs) crate:
+Automatic binding to structs when encoding/decoding is supported via the [pl-hlist](https://github.com/plausiblelabs/hlist-rs) crate:
 
 ```rust
 #[derive(Debug, PartialEq, Eq, Clone, HListSupport)]
