@@ -15,5 +15,5 @@ readme = "README.md"
 travis-ci = { repository = "plausiblelabs/rcodec" }
 
 [dependencies]
-num = "0.2.0"
+num-traits = "0.2.0"
 pl-hlist = "1.0.0"
