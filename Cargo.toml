@@ -1,10 +1,19 @@
 [package]
 name = "rcodec"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2018"
 authors = ["Chris Campbell <campbell@plausible.coop>"]
+license = "MIT"
+description = "Provides combinators for purely functional, declarative encoding and decoding of binary data."
+keywords = ["plausible", "codec", "functional", "combinator"]
+categories = ["encoding"]
+homepage = "https://github.com/plausiblelabs/rcodec"
+repository = "https://github.com/plausiblelabs/rcodec"
+readme = "README.md"
+
+[badges]
+travis-ci = { repository = "plausiblelabs/rcodec" }
 
 [dependencies]
 num = "*"
-# TODO: Update to use latest from crates.io
-hlist = { git = "https://github.com/plausiblelabs/hlist-rs" }
+pl-hlist = "1.0.0"

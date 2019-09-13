@@ -17,7 +17,7 @@ use std::slice;
 
 use num::traits::{FromPrimitive, PrimInt, Unsigned};
 
-use hlist::*;
+use pl_hlist::*;
 
 use crate::byte_vector;
 use crate::byte_vector::ByteVector;
