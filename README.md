@@ -1,6 +1,18 @@
 # rcodec
 
-[![Build Status](https://travis-ci.com/plausiblelabs/rcodec.svg?branch=master)](https://travis-ci.com/plausiblelabs/rcodec)
+[![Build Status][travis-badge]][travis-url]
+[![Crates.io][crates-badge]][crates-url]
+[![Docs.rs][docs-badge]][docs-url]
+[![MIT licensed][mit-badge]][mit-url]
+
+[travis-badge]: https://travis-ci.com/plausiblelabs/rcodec.svg?branch=master
+[travis-url]: https://travis-ci.com/plausiblelabs/rcodec
+[crates-badge]: https://img.shields.io/crates/v/rcodec.svg
+[crates-url]: https://crates.io/crates/rcodec
+[docs-badge]: https://docs.rs/rcodec/badge.svg
+[docs-url]: https://docs.rs/rcodec
+[mit-badge]: https://img.shields.io/badge/license-MIT-blue.svg
+[mit-url]: LICENSE
 
 This Rust library provides combinators for purely functional, declarative encoding and decoding of binary data.  Its design is largely derived from that of the [scodec](https://github.com/scodec/scodec) library for Scala.
 
@@ -10,8 +22,8 @@ Add the following dependencies to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-pl-hlist = "1.0.0"
-rcodec = "1.0.0"
+pl-hlist = "1.0"
+rcodec = "1.0"
 ```
 
 Then, in your crate:
