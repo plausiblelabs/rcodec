@@ -15,7 +15,7 @@ use std::mem::size_of;
 use std::ptr;
 use std::slice;
 
-use num::traits::{FromPrimitive, PrimInt, Unsigned};
+use num_traits::{FromPrimitive, PrimInt, Unsigned};
 
 use pl_hlist::*;
 
