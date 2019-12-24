@@ -71,6 +71,8 @@ impl ByteVector {
     /// Returns a new vector of length `len` containing zero or more low bytes followed by this byte vector's contents.
     /// If this vector is longer than `len` bytes, an error will be returned.
     pub fn pad_left(&self, len: usize) -> Result<ByteVector, Error> {
+        #![allow(clippy::unknown_clippy_lints, clippy::comparison_chain)]
+
         let storage_len = self.length();
         if len < storage_len {
             Err(Error::new(format!(
@@ -88,6 +90,8 @@ impl ByteVector {
     /// Returns a new vector of length `len` containing this byte vector's contents followed by zero or more low bytes.
     /// If this vector is longer than `len` bytes, an error will be returned.
     pub fn pad_right(&self, len: usize) -> Result<ByteVector, Error> {
+        #![allow(clippy::unknown_clippy_lints, clippy::comparison_chain)]
+
         let storage_len = self.length();
         if len < storage_len {
             Err(Error::new(format!(

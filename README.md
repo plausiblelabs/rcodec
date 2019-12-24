@@ -1,12 +1,12 @@
 # rcodec
 
-[![Build Status][travis-badge]][travis-url]
+[![Build Status][gh-actions-badge]][gh-actions-url]
 [![Crates.io][crates-badge]][crates-url]
 [![Docs.rs][docs-badge]][docs-url]
 [![MIT licensed][mit-badge]][mit-url]
 
-[travis-badge]: https://travis-ci.com/plausiblelabs/rcodec.svg?branch=master
-[travis-url]: https://travis-ci.com/plausiblelabs/rcodec
+[gh-actions-badge]: https://github.com/plausiblelabs/rcodec/workflows/Build/badge.svg?event=push
+[gh-actions-url]: https://github.com/plausiblelabs/rcodec/actions?query=workflow%3ABuild+branch%3Amaster
 [crates-badge]: https://img.shields.io/crates/v/rcodec.svg
 [crates-url]: https://crates.io/crates/rcodec
 [docs-badge]: https://docs.rs/rcodec/badge.svg
