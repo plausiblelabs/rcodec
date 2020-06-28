@@ -11,9 +11,6 @@ homepage = "https://github.com/plausiblelabs/rcodec"
 repository = "https://github.com/plausiblelabs/rcodec"
 readme = "README.md"
 
-[badges]
-travis-ci = { repository = "plausiblelabs/rcodec" }
-
 [dependencies]
 num-traits = "0.2.0"
-pl-hlist = "1.0.0"
+pl-hlist = "1.0"
