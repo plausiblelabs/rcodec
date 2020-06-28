@@ -412,12 +412,7 @@ impl StorageType {
                 let read_result = f
                     .seek(SeekFrom::Start(offset as u64))
                     .and_then(|_newpos| f.read(&mut buf[0..count]))
-                    .map_err(|io_err| {
-                        Error::new(format!(
-                            "Failed to read file: {}",
-                            std::error::Error::description(&io_err)
-                        ))
-                    });
+                    .map_err(|io_err| Error::new(format!("Failed to read file: {}", io_err)));
 
                 // If the read was incomplete, keep reading recursively
                 read_result.and_then(|bytes_read| {
@@ -515,12 +510,7 @@ pub fn file(path: &Path) -> Result<ByteVector, Error> {
     });
 
     // Wrap I/O error in an rcodec error, if needed
-    result.map_err(|io_err| {
-        Error::new(format!(
-            "Failed to open file: {}",
-            std::error::Error::description(&io_err)
-        ))
-    })
+    result.map_err(|io_err| Error::new(format!("Failed to open file: {}", io_err)))
 }
 
 /// Returns a byte vector that contains the contents of `lhs` followed by the contents of `rhs`.
@@ -833,19 +823,11 @@ mod tests {
 
         let contents = [1u8, 2, 3, 4, 5, 6, 7, 8, 9, 10];
         let mut write_file = match fs::File::create(path) {
-            Err(why) => panic!(
-                "Couldn't create test file {:?}: {}",
-                path.to_str(),
-                std::error::Error::description(&why)
-            ),
+            Err(why) => panic!("Couldn't create test file {:?}: {}", path.to_str(), why),
             Ok(file) => file,
         };
         if let Err(why) = write_file.write_all(&contents) {
-            panic!(
-                "Couldn't write test file {:?}: {}",
-                path.to_str(),
-                std::error::Error::description(&why)
-            )
+            panic!("Couldn't write test file {:?}: {}", path.to_str(), why)
         }
 
         let bv_result = file(path);
