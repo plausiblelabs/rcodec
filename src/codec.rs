@@ -116,7 +116,7 @@ macro_rules! integral_codec {
                     let mut buf = slice::from_raw_parts_mut(dst_ptr, size);
                     bv.read(&mut buf, 0, size).and_then(|_size| {
                         bv.drop(size).map(|remainder| {
-                            DecoderResult { value: $decswap, remainder: remainder }
+                            DecoderResult { value: $decswap, remainder }
                         })
                     })
                 }
